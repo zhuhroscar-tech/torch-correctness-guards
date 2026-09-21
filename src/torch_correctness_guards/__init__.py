@@ -8,3 +8,8 @@ from .guards.addcdiv_stale_scalar import (  # noqa: F401
     make_safe_stale_scalar_step,
     safe_stale_scalar_step,
 )
+from .guards.as_strided_restride_oob import (  # noqa: F401
+    diagnose as diagnose_as_strided_restride_oob,
+    safe_as_strided,
+)
+

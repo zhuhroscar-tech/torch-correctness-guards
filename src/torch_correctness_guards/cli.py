@@ -11,18 +11,26 @@ _GUARDS = {
         "description": "Inductor stale Python scalar in addcdiv_/addcmul_ Adam-style arithmetic",
         "module": "torch_correctness_guards.guards.addcdiv_stale_scalar",
     },
+    "as-strided-restride-oob": {
+        "description": "Inductor as_strided storage-span miscomputation for repeated+sliced restrided views",
+        "module": "torch_correctness_guards.guards.as_strided_restride_oob",
+    },
 }
 
 
 def _load_guard(name: str):
-    if name != "addcdiv-stale-scalar":  # defensive; argparse constrains this.
-        raise KeyError(name)
-    from .guards import addcdiv_stale_scalar
+    if name == "addcdiv-stale-scalar":
+        from .guards import addcdiv_stale_scalar
 
-    return addcdiv_stale_scalar
+        return addcdiv_stale_scalar
+    if name == "as-strided-restride-oob":
+        from .guards import as_strided_restride_oob
+
+        return as_strided_restride_oob
+    raise KeyError(name)  # defensive; argparse constrains this.
 
 
-def _print_report(report, *, no_color: bool) -> None:
+def _print_addcdiv_report(report, *, no_color: bool) -> None:
     style = resolve_style(no_color_flag=no_color)
     print_fields([("torch version", report["torch_version"])])
 
@@ -49,6 +57,43 @@ def _print_report(report, *, no_color: bool) -> None:
                 )
             ]
         )
+
+
+def _print_as_strided_report(report, *, no_color: bool) -> None:
+    style = resolve_style(no_color_flag=no_color)
+    print_fields([("torch version", report["torch_version"])])
+
+    if report["any_divergence_bug"]:
+        print(status_headline(style, "warn", "as_strided restride divergence reproduced on this host"))
+    else:
+        print(status_headline(style, "info", "no as_strided restride divergence reproduced on this host's installed torch build"))
+
+    if report["guard_fully_correct"]:
+        print(status_headline(style, "ok", "safe_as_strided() matches eager on every call, including under torch.compile"))
+    else:
+        print(status_headline(style, "fail", "guard did NOT match eager on at least one call"))
+
+    section("calls (index -> input values -> eager vs compiled vs guard)")
+    for c in report["cases"]:
+        flag = "DIVERGENCE" if c["divergence_bug"] else "ok"
+        guard_flag = "guard-ok" if c["guard_matches_eager"] else "GUARD-FAILED"
+        compiled_desc = c["compiled_error"] if not c["compiled_ok"] else str(c["compiled_value"])
+        print_fields(
+            [
+                (
+                    f"call {c['call_index']}",
+                    f"x={c['x_values']!s:16s} eager={c['eager_value']}  "
+                    f"compiled={compiled_desc}  {flag:10s}  {guard_flag}",
+                )
+            ]
+        )
+
+
+def _print_report(guard_name: str, report, *, no_color: bool) -> None:
+    if guard_name == "as-strided-restride-oob":
+        _print_as_strided_report(report, no_color=no_color)
+    else:
+        _print_addcdiv_report(report, no_color=no_color)
 
 
 def main(argv=None) -> int:
@@ -96,7 +141,7 @@ def main(argv=None) -> int:
             print(json.dumps(payload, indent=2))
             return 0 if report["guard_fully_correct"] else 1
 
-        _print_report(report, no_color=args.no_color)
+        _print_report(args.guard, report, no_color=args.no_color)
         return 0 if report["guard_fully_correct"] else 1
 
     parser.print_help()
