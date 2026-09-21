@@ -16,4 +16,8 @@ from .guards.checkpoint_noise import (  # noqa: F401
     diagnose as diagnose_checkpoint_noise,
     safe_rrelu,
 )
+from .guards.dynamic_clamp import (  # noqa: F401
+    diagnose as diagnose_dynamic_clamp,
+    safe_clamp,
+)
 

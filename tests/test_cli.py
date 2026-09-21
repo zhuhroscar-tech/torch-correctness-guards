@@ -5,7 +5,7 @@ import json
 
 from torch_correctness_guards import __version__
 from torch_correctness_guards.cli import main
-from torch_correctness_guards.guards import addcdiv_stale_scalar, as_strided_restride_oob, checkpoint_noise
+from torch_correctness_guards.guards import addcdiv_stale_scalar, as_strided_restride_oob, checkpoint_noise, dynamic_clamp
 
 
 def _fake_report(**overrides):
@@ -46,6 +46,8 @@ def test_list_includes_migrated_guard(capsys):
     assert "as_strided" in out
     assert "checkpoint-noise" in out
     assert "F.rrelu" in out
+    assert "dynamic-clamp" in out
+    assert "torch.clamp" in out
 
 
 def test_run_json_includes_guard_name(monkeypatch, capsys):
@@ -173,3 +175,47 @@ def test_run_checkpoint_noise_text_reports_guard_status(monkeypatch, capsys):
     assert "F.rrelu checkpoint/saved-hooks gradient corruption reproduced" in out
     assert "safe_rrelu() produces identical" in out
     assert "non-reentrant checkpoint" in out
+
+
+def _fake_dynamic_clamp_report(**overrides):
+    report = {
+        "torch_version": "9.9.9-fake",
+        "issue_urls": [
+            "https://github.com/pytorch/pytorch/issues/194976",
+            "https://github.com/nvidia/Megatron-LM/issues/6918",
+        ],
+        "cases": [
+            {
+                "call_index": 2,
+                "shape": (1, 4),
+                "requires_grad": True,
+                "limit": 1.0,
+                "eager_value": 3.0,
+                "compiled_value": 2.0,
+                "guard_value": 3.0,
+                "stale_reuse_bug": True,
+                "guard_matches_eager": True,
+            }
+        ],
+        "any_stale_reuse_bug": True,
+        "guard_fully_correct": True,
+    }
+    report.update(overrides)
+    return report
+
+
+def test_run_dynamic_clamp_json_includes_guard_name(monkeypatch, capsys):
+    monkeypatch.setattr(dynamic_clamp, "diagnose", lambda: _fake_dynamic_clamp_report())
+    assert main(["run", "dynamic-clamp", "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["guard"] == "dynamic-clamp"
+    assert payload["guard_fully_correct"] is True
+
+
+def test_run_dynamic_clamp_text_reports_guard_status(monkeypatch, capsys):
+    monkeypatch.setattr(dynamic_clamp, "diagnose", lambda: _fake_dynamic_clamp_report())
+    assert main(["run", "dynamic-clamp", "--no-color"]) == 0
+    out = capsys.readouterr().out
+    assert "stale dynamic-float clamp reuse reproduced" in out
+    assert "safe_clamp() matches eager" in out
+    assert "STALE-REUSE" in out

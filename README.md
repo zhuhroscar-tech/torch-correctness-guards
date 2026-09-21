@@ -11,6 +11,7 @@ The package replaces the older one-repo-per-guard pattern with one installable C
 | addcdiv stale scalar | `addcdiv-stale-scalar` | pytorch/pytorch#185382 | Reproduces an Inductor stale Python-scalar cache bug in Adam-style `addcdiv_`/`addcmul_` arithmetic and verifies the eager call-site guard. |
 | as_strided restride OOB | `as-strided-restride-oob` | pytorch/pytorch#197431, pytorch/pytorch#192226 | Reproduces an Inductor storage-span miscalculation for `torch.as_strided` on repeated+sliced restrided views and verifies the eager call-site guard. |
 | checkpoint noise | `checkpoint-noise` | pytorch/pytorch#193671 | Reproduces `F.rrelu(..., training=True)` silently wrong gradients under non-reentrant checkpointing or saved-tensors hooks and verifies the `safe_rrelu` replacement. |
+| dynamic clamp | `dynamic-clamp` | pytorch/pytorch#194976, nvidia/Megatron-LM#6918 | Reproduces Inductor stale reuse of automatically-dynamic Python float bounds in `torch.clamp` and verifies the `safe_clamp` call-site guard. |
 
 ## Install
 
@@ -32,6 +33,7 @@ torch-guard list
 torch-guard run addcdiv-stale-scalar
 torch-guard run as-strided-restride-oob
 torch-guard run checkpoint-noise
+torch-guard run dynamic-clamp
 torch-guard run addcdiv-stale-scalar --json
 ```
 
@@ -43,10 +45,12 @@ Exit codes for `run` describe the guard check: `0` means every guard case matche
 from torch_correctness_guards import make_safe_stale_scalar_step
 from torch_correctness_guards import safe_as_strided
 from torch_correctness_guards import safe_rrelu
+from torch_correctness_guards import safe_clamp
 
 safe_bias_correction = make_safe_stale_scalar_step(torch)
 y = safe_as_strided(sliced, size, stride, storage_offset=None)
 z = safe_rrelu(x, lower=0.125, upper=1 / 3, training=True)
+w = safe_clamp(x, max=limit)
 ```
 
 ## License

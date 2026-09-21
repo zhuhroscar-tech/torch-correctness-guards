@@ -19,6 +19,10 @@ _GUARDS = {
         "description": "F.rrelu mutable noise buffer captured before fill under checkpoint/saved_tensors_hooks",
         "module": "torch_correctness_guards.guards.checkpoint_noise",
     },
+    "dynamic-clamp": {
+        "description": "Inductor stale automatically-dynamic Python float reused in torch.clamp bounds",
+        "module": "torch_correctness_guards.guards.dynamic_clamp",
+    },
 }
 
 
@@ -35,6 +39,10 @@ def _load_guard(name: str):
         from .guards import checkpoint_noise
 
         return checkpoint_noise
+    if name == "dynamic-clamp":
+        from .guards import dynamic_clamp
+
+        return dynamic_clamp
     raise KeyError(name)  # defensive; argparse constrains this.
 
 
@@ -137,11 +145,42 @@ def _print_checkpoint_noise_report(report, *, no_color: bool) -> None:
     )
 
 
+def _print_dynamic_clamp_report(report, *, no_color: bool) -> None:
+    style = resolve_style(no_color_flag=no_color)
+    print_fields([("torch version", report["torch_version"])])
+
+    if report["any_stale_reuse_bug"]:
+        print(status_headline(style, "warn", "stale dynamic-float clamp reuse reproduced on this host"))
+    else:
+        print(status_headline(style, "info", "no stale-reuse divergence reproduced on this host's installed torch build"))
+
+    if report["guard_fully_correct"]:
+        print(status_headline(style, "ok", "safe_clamp() matches eager on every call, including under torch.compile"))
+    else:
+        print(status_headline(style, "fail", "guard did NOT match eager on at least one call"))
+
+    section("calls (index -> shape/requires_grad/limit -> eager vs compiled vs guard)")
+    for c in report["cases"]:
+        flag = "STALE-REUSE" if c["stale_reuse_bug"] else "ok"
+        guard_flag = "guard-ok" if c["guard_matches_eager"] else "GUARD-FAILED"
+        print_fields(
+            [
+                (
+                    f"call {c['call_index']}",
+                    f"shape={c['shape']!s:10s} requires_grad={c['requires_grad']!s:5s} limit={c['limit']}  "
+                    f"eager={c['eager_value']:.6f}  compiled={c['compiled_value']:.6f}  {flag:11s}  {guard_flag}",
+                )
+            ]
+        )
+
+
 def _print_report(guard_name: str, report, *, no_color: bool) -> None:
     if guard_name == "as-strided-restride-oob":
         _print_as_strided_report(report, no_color=no_color)
     elif guard_name == "checkpoint-noise":
         _print_checkpoint_noise_report(report, no_color=no_color)
+    elif guard_name == "dynamic-clamp":
+        _print_dynamic_clamp_report(report, no_color=no_color)
     else:
         _print_addcdiv_report(report, no_color=no_color)
 
