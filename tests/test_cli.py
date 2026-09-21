@@ -11,6 +11,7 @@ from torch_correctness_guards.guards import (
     checkpoint_noise,
     dynamic_clamp,
     normal_dtype_promotion,
+    shuffle_sample_frozen,
 )
 
 
@@ -56,6 +57,8 @@ def test_list_includes_migrated_guard(capsys):
     assert "torch.clamp" in out
     assert "normal-dtype-promotion" in out
     assert "Normal.sample" in out
+    assert "shuffle-sample-frozen" in out
+    assert "random.shuffle" in out
 
 
 def test_run_json_includes_guard_name(monkeypatch, capsys):
@@ -266,3 +269,46 @@ def test_run_normal_dtype_promotion_text_reports_guard_status(monkeypatch, capsy
     assert "Normal.sample() dtype-promotion divergence reproduced" in out
     assert "safe_compiled_normal_sample() restores eager" in out
     assert "DIVERGES" in out
+
+
+def _fake_shuffle_sample_frozen_report(**overrides):
+    report = {
+        "torch_version": "9.9.9-fake",
+        "issue_url": "https://github.com/pytorch/pytorch/issues/197085",
+        "seed": 7,
+        "calls": 3,
+        "cases": [
+            {
+                "kind": "shuffle",
+                "description": "fake shuffle case",
+                "eager_sequence": [[1, 2], [2, 1]],
+                "native_compiled_sequence": [[1, 2], [1, 2]],
+                "guarded_compiled_sequence": [[1, 2], [2, 1]],
+                "eager_shows_real_variation": True,
+                "native_frozen_after_first_call": True,
+                "guard_matches_eager": True,
+                "guard_correct": True,
+            }
+        ],
+        "any_native_frozen": True,
+        "guard_fully_correct": True,
+    }
+    report.update(overrides)
+    return report
+
+
+def test_run_shuffle_sample_frozen_json_includes_guard_name(monkeypatch, capsys):
+    monkeypatch.setattr(shuffle_sample_frozen, "diagnose", lambda: _fake_shuffle_sample_frozen_report())
+    assert main(["run", "shuffle-sample-frozen", "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["guard"] == "shuffle-sample-frozen"
+    assert payload["guard_fully_correct"] is True
+
+
+def test_run_shuffle_sample_frozen_text_reports_guard_status(monkeypatch, capsys):
+    monkeypatch.setattr(shuffle_sample_frozen, "diagnose", lambda: _fake_shuffle_sample_frozen_report())
+    assert main(["run", "shuffle-sample-frozen", "--no-color"]) == 0
+    out = capsys.readouterr().out
+    assert "random.shuffle/random.sample frozen at trace time reproduced" in out
+    assert "safe_shuffle()/safe_sample() restore eager" in out
+    assert "FROZEN" in out

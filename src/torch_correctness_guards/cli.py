@@ -27,6 +27,10 @@ _GUARDS = {
         "description": "torch.compile Normal.sample() silently promotes dtype away from eager loc dtype",
         "module": "torch_correctness_guards.guards.normal_dtype_promotion",
     },
+    "shuffle-sample-frozen": {
+        "description": "Dynamo freezes random.shuffle/random.sample results at trace time inside torch.compile",
+        "module": "torch_correctness_guards.guards.shuffle_sample_frozen",
+    },
 }
 
 
@@ -51,6 +55,10 @@ def _load_guard(name: str):
         from .guards import normal_dtype_promotion
 
         return normal_dtype_promotion
+    if name == "shuffle-sample-frozen":
+        from .guards import shuffle_sample_frozen
+
+        return shuffle_sample_frozen
     raise KeyError(name)  # defensive; argparse constrains this.
 
 
@@ -211,6 +219,34 @@ def _print_normal_dtype_promotion_report(report, *, no_color: bool) -> None:
         )
 
 
+def _print_shuffle_sample_frozen_report(report, *, no_color: bool) -> None:
+    style = resolve_style(no_color_flag=no_color)
+    print_fields([("torch version", report["torch_version"]), ("seed", report["seed"]), ("calls", report["calls"])])
+
+    if report["any_native_frozen"]:
+        print(status_headline(style, "fail", "random.shuffle/random.sample frozen at trace time reproduced on this host (pytorch#197085)"))
+    else:
+        print(status_headline(style, "info", "no trace-time freeze reproduced on this host's installed torch build"))
+
+    if report["guard_fully_correct"]:
+        print(status_headline(style, "ok", "safe_shuffle()/safe_sample() restore eager per-call randomness on every case"))
+    else:
+        print(status_headline(style, "fail", "guards did NOT restore eager semantics on at least one case"))
+
+    section("cases (kind -> native vs guard vs eager)")
+    for c in report["cases"]:
+        native_flag = "FROZEN" if c["native_frozen_after_first_call"] else "ok"
+        guard_flag = "guard-ok" if c["guard_correct"] else "GUARD-FAILED"
+        print_fields(
+            [
+                (
+                    c["kind"],
+                    f"native={native_flag:8s}  guard_matches_eager={str(c['guard_matches_eager']):5s}  {guard_flag}",
+                )
+            ]
+        )
+
+
 def _print_report(guard_name: str, report, *, no_color: bool) -> None:
     if guard_name == "as-strided-restride-oob":
         _print_as_strided_report(report, no_color=no_color)
@@ -220,6 +256,8 @@ def _print_report(guard_name: str, report, *, no_color: bool) -> None:
         _print_dynamic_clamp_report(report, no_color=no_color)
     elif guard_name == "normal-dtype-promotion":
         _print_normal_dtype_promotion_report(report, no_color=no_color)
+    elif guard_name == "shuffle-sample-frozen":
+        _print_shuffle_sample_frozen_report(report, no_color=no_color)
     else:
         _print_addcdiv_report(report, no_color=no_color)
 

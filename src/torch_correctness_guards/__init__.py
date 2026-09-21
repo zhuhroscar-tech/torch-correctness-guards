@@ -24,4 +24,11 @@ from .guards.normal_dtype_promotion import (  # noqa: F401
     diagnose as diagnose_normal_dtype_promotion,
     safe_compiled_normal_sample,
 )
+from .guards.shuffle_sample_frozen import (  # noqa: F401
+    diagnose as diagnose_shuffle_sample_frozen,
+    make_safe_sample,
+    make_safe_shuffle,
+    safe_sample,
+    safe_shuffle,
+)
 

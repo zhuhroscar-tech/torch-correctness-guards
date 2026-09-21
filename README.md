@@ -13,6 +13,7 @@ The package replaces the older one-repo-per-guard pattern with one installable C
 | checkpoint noise | `checkpoint-noise` | pytorch/pytorch#193671 | Reproduces `F.rrelu(..., training=True)` silently wrong gradients under non-reentrant checkpointing or saved-tensors hooks and verifies the `safe_rrelu` replacement. |
 | dynamic clamp | `dynamic-clamp` | pytorch/pytorch#194976, nvidia/Megatron-LM#6918 | Reproduces Inductor stale reuse of automatically-dynamic Python float bounds in `torch.clamp` and verifies the `safe_clamp` call-site guard. |
 | Normal.sample dtype promotion | `normal-dtype-promotion` | pytorch/pytorch#194547 | Reproduces `torch.compile` silently promoting `torch.distributions.Normal.sample()` output dtype when eager preserves the lower-precision `loc` dtype, and verifies the wrapper restores eager's dtype contract. |
+| shuffle/sample frozen RNG | `shuffle-sample-frozen` | pytorch/pytorch#197085 | Reproduces Dynamo baking `random.shuffle()` / `random.sample()` results into a compiled graph as trace-time constants and verifies graph-break wrappers restore eager per-call randomness. |
 
 ## Install
 
@@ -36,6 +37,7 @@ torch-guard run as-strided-restride-oob
 torch-guard run checkpoint-noise
 torch-guard run dynamic-clamp
 torch-guard run normal-dtype-promotion
+torch-guard run shuffle-sample-frozen
 torch-guard run addcdiv-stale-scalar --json
 ```
 
@@ -49,12 +51,15 @@ from torch_correctness_guards import safe_as_strided
 from torch_correctness_guards import safe_rrelu
 from torch_correctness_guards import safe_clamp
 from torch_correctness_guards import safe_compiled_normal_sample
+from torch_correctness_guards import safe_sample, safe_shuffle
 
 safe_bias_correction = make_safe_stale_scalar_step(torch)
 y = safe_as_strided(sliced, size, stride, storage_offset=None)
 z = safe_rrelu(x, lower=0.125, upper=1 / 3, training=True)
 w = safe_clamp(x, max=limit)
 sample = safe_compiled_normal_sample(compiled_fn, eager_fn)(loc, scale)
+safe_shuffle(items)
+subset = safe_sample(population, k)
 ```
 
 ## License
