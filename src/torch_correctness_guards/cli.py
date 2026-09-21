@@ -15,6 +15,10 @@ _GUARDS = {
         "description": "Inductor as_strided storage-span miscomputation for repeated+sliced restrided views",
         "module": "torch_correctness_guards.guards.as_strided_restride_oob",
     },
+    "checkpoint-noise": {
+        "description": "F.rrelu mutable noise buffer captured before fill under checkpoint/saved_tensors_hooks",
+        "module": "torch_correctness_guards.guards.checkpoint_noise",
+    },
 }
 
 
@@ -27,6 +31,10 @@ def _load_guard(name: str):
         from .guards import as_strided_restride_oob
 
         return as_strided_restride_oob
+    if name == "checkpoint-noise":
+        from .guards import checkpoint_noise
+
+        return checkpoint_noise
     raise KeyError(name)  # defensive; argparse constrains this.
 
 
@@ -89,9 +97,51 @@ def _print_as_strided_report(report, *, no_color: bool) -> None:
         )
 
 
+def _print_checkpoint_noise_report(report, *, no_color: bool) -> None:
+    style = resolve_style(no_color_flag=no_color)
+    print_fields([("torch version", report["torch_version"])])
+
+    if report["bug_reproduced"]:
+        print(status_headline(style, "warn", "F.rrelu checkpoint/saved-hooks gradient corruption reproduced on this host (#193671)"))
+    else:
+        print(status_headline(style, "info", "F.rrelu checkpoint/saved-hooks bug did NOT reproduce on this host's installed torch build"))
+
+    if report["bug_reproduced"] and not report["mechanism_confirmed"]:
+        print(status_headline(style, "warn", "bug reproduced but the expected root-cause signature did not fully match"))
+
+    if report["guard_fully_correct"]:
+        print(status_headline(style, "ok", "safe_rrelu() produces identical, NaN-free gradients across eager, checkpoint, and saved-tensors-hooks execution"))
+    else:
+        print(status_headline(style, "fail", "safe_rrelu() did NOT match expected behavior in at least one mode"))
+
+    section("non-reentrant checkpoint")
+    c = report["checkpoint_case"]
+    print_fields(
+        [
+            ("buggy F.rrelu gradient diff vs uncheckpointed", f"{c['buggy_diff']!s}"),
+            ("buggy forward-output diff (expected 0.0)", f"{c['buggy_forward_diff']!s}"),
+            ("buggy diff with early-stop disabled (expected 0.0)", f"{c['no_early_stop_diff']!s}"),
+            ("guard (safe_rrelu) gradient diff", f"{c['guard_diff']!s}"),
+            ("guard has NaN", f"{c['guard_has_nan']!s}"),
+        ]
+    )
+
+    section("saved_tensors_hooks (clone-based pack/unpack)")
+    c = report["saved_hooks_case"]
+    print_fields(
+        [
+            ("buggy F.rrelu gradient diff vs unhooked", f"{c['buggy_diff']!s}"),
+            ("guard (safe_rrelu) gradient diff", f"{c['guard_diff']!s}"),
+            ("guard has NaN", f"{c['guard_has_nan']!s}"),
+        ]
+    )
+
+
 def _print_report(guard_name: str, report, *, no_color: bool) -> None:
     if guard_name == "as-strided-restride-oob":
         _print_as_strided_report(report, no_color=no_color)
+    elif guard_name == "checkpoint-noise":
+        _print_checkpoint_noise_report(report, no_color=no_color)
     else:
         _print_addcdiv_report(report, no_color=no_color)
 

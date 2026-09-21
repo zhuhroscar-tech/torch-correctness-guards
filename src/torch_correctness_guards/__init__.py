@@ -12,4 +12,8 @@ from .guards.as_strided_restride_oob import (  # noqa: F401
     diagnose as diagnose_as_strided_restride_oob,
     safe_as_strided,
 )
+from .guards.checkpoint_noise import (  # noqa: F401
+    diagnose as diagnose_checkpoint_noise,
+    safe_rrelu,
+)
 

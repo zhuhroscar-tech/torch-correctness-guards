@@ -5,7 +5,7 @@ import json
 
 from torch_correctness_guards import __version__
 from torch_correctness_guards.cli import main
-from torch_correctness_guards.guards import addcdiv_stale_scalar, as_strided_restride_oob
+from torch_correctness_guards.guards import addcdiv_stale_scalar, as_strided_restride_oob, checkpoint_noise
 
 
 def _fake_report(**overrides):
@@ -44,6 +44,8 @@ def test_list_includes_migrated_guard(capsys):
     assert "addcdiv_" in out
     assert "as-strided-restride-oob" in out
     assert "as_strided" in out
+    assert "checkpoint-noise" in out
+    assert "F.rrelu" in out
 
 
 def test_run_json_includes_guard_name(monkeypatch, capsys):
@@ -126,3 +128,48 @@ def test_run_as_strided_text_reports_guard_status(monkeypatch, capsys):
     assert "as_strided restride divergence reproduced" in out
     assert "safe_as_strided() matches eager" in out
     assert "RuntimeError: setStorage out of bounds" in out
+
+
+def _fake_checkpoint_noise_report(**overrides):
+    report = {
+        "torch_version": "9.9.9-fake",
+        "issue_urls": ["https://github.com/pytorch/pytorch/issues/193671"],
+        "checkpoint_case": {
+            "mode": "checkpoint",
+            "buggy_diff": 1.0,
+            "buggy_forward_diff": 0.0,
+            "guard_diff": 0.0,
+            "guard_has_nan": False,
+            "no_early_stop_diff": 0.0,
+        },
+        "saved_hooks_case": {
+            "mode": "saved_hooks",
+            "buggy_diff": 2.0,
+            "buggy_forward_diff": 0.0,
+            "guard_diff": 0.0,
+            "guard_has_nan": False,
+            "no_early_stop_diff": None,
+        },
+        "bug_reproduced": True,
+        "mechanism_confirmed": True,
+        "guard_fully_correct": True,
+    }
+    report.update(overrides)
+    return report
+
+
+def test_run_checkpoint_noise_json_includes_guard_name(monkeypatch, capsys):
+    monkeypatch.setattr(checkpoint_noise, "diagnose", lambda: _fake_checkpoint_noise_report())
+    assert main(["run", "checkpoint-noise", "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["guard"] == "checkpoint-noise"
+    assert payload["guard_fully_correct"] is True
+
+
+def test_run_checkpoint_noise_text_reports_guard_status(monkeypatch, capsys):
+    monkeypatch.setattr(checkpoint_noise, "diagnose", lambda: _fake_checkpoint_noise_report())
+    assert main(["run", "checkpoint-noise", "--no-color"]) == 0
+    out = capsys.readouterr().out
+    assert "F.rrelu checkpoint/saved-hooks gradient corruption reproduced" in out
+    assert "safe_rrelu() produces identical" in out
+    assert "non-reentrant checkpoint" in out
