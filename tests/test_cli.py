@@ -5,7 +5,13 @@ import json
 
 from torch_correctness_guards import __version__
 from torch_correctness_guards.cli import main
-from torch_correctness_guards.guards import addcdiv_stale_scalar, as_strided_restride_oob, checkpoint_noise, dynamic_clamp
+from torch_correctness_guards.guards import (
+    addcdiv_stale_scalar,
+    as_strided_restride_oob,
+    checkpoint_noise,
+    dynamic_clamp,
+    normal_dtype_promotion,
+)
 
 
 def _fake_report(**overrides):
@@ -48,6 +54,8 @@ def test_list_includes_migrated_guard(capsys):
     assert "F.rrelu" in out
     assert "dynamic-clamp" in out
     assert "torch.clamp" in out
+    assert "normal-dtype-promotion" in out
+    assert "Normal.sample" in out
 
 
 def test_run_json_includes_guard_name(monkeypatch, capsys):
@@ -219,3 +227,42 @@ def test_run_dynamic_clamp_text_reports_guard_status(monkeypatch, capsys):
     assert "stale dynamic-float clamp reuse reproduced" in out
     assert "safe_clamp() matches eager" in out
     assert "STALE-REUSE" in out
+
+
+def _fake_normal_dtype_promotion_report(**overrides):
+    report = {
+        "torch_version": "9.9.9-fake",
+        "issue_url": "https://github.com/pytorch/pytorch/issues/194547",
+        "cases": [
+            {
+                "loc_dtype": "torch.float16",
+                "scale_dtype": "torch.float32",
+                "eager_dtype": "torch.float16",
+                "compiled_dtype": "torch.float32",
+                "dtype_diverges": True,
+                "guarded_dtype": "torch.float16",
+                "guarded_matches_eager": True,
+            }
+        ],
+        "any_native_divergence": True,
+        "guard_fully_correct": True,
+    }
+    report.update(overrides)
+    return report
+
+
+def test_run_normal_dtype_promotion_json_includes_guard_name(monkeypatch, capsys):
+    monkeypatch.setattr(normal_dtype_promotion, "diagnose", lambda: _fake_normal_dtype_promotion_report())
+    assert main(["run", "normal-dtype-promotion", "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["guard"] == "normal-dtype-promotion"
+    assert payload["guard_fully_correct"] is True
+
+
+def test_run_normal_dtype_promotion_text_reports_guard_status(monkeypatch, capsys):
+    monkeypatch.setattr(normal_dtype_promotion, "diagnose", lambda: _fake_normal_dtype_promotion_report())
+    assert main(["run", "normal-dtype-promotion", "--no-color"]) == 0
+    out = capsys.readouterr().out
+    assert "Normal.sample() dtype-promotion divergence reproduced" in out
+    assert "safe_compiled_normal_sample() restores eager" in out
+    assert "DIVERGES" in out

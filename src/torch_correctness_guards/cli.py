@@ -23,6 +23,10 @@ _GUARDS = {
         "description": "Inductor stale automatically-dynamic Python float reused in torch.clamp bounds",
         "module": "torch_correctness_guards.guards.dynamic_clamp",
     },
+    "normal-dtype-promotion": {
+        "description": "torch.compile Normal.sample() silently promotes dtype away from eager loc dtype",
+        "module": "torch_correctness_guards.guards.normal_dtype_promotion",
+    },
 }
 
 
@@ -43,6 +47,10 @@ def _load_guard(name: str):
         from .guards import dynamic_clamp
 
         return dynamic_clamp
+    if name == "normal-dtype-promotion":
+        from .guards import normal_dtype_promotion
+
+        return normal_dtype_promotion
     raise KeyError(name)  # defensive; argparse constrains this.
 
 
@@ -174,6 +182,35 @@ def _print_dynamic_clamp_report(report, *, no_color: bool) -> None:
         )
 
 
+def _print_normal_dtype_promotion_report(report, *, no_color: bool) -> None:
+    style = resolve_style(no_color_flag=no_color)
+    print_fields([("torch version", report["torch_version"])])
+
+    if report["any_native_divergence"]:
+        print(status_headline(style, "fail", "torch.compile Normal.sample() dtype-promotion divergence reproduced on this host (pytorch#194547)"))
+    else:
+        print(status_headline(style, "info", "no Normal.sample() dtype-promotion divergence reproduced on this host's installed torch build"))
+
+    if report["guard_fully_correct"]:
+        print(status_headline(style, "ok", "safe_compiled_normal_sample() restores eager's dtype-preservation contract on every case"))
+    else:
+        print(status_headline(style, "fail", "guard did NOT restore eager's dtype contract on at least one case"))
+
+    section("cases (loc dtype, scale dtype -> eager/compiled/guarded dtype)")
+    for c in report["cases"]:
+        native_flag = "DIVERGES" if c["dtype_diverges"] else "matches"
+        guard_flag = "guard-ok" if c["guarded_matches_eager"] else "GUARD-FAILED"
+        print_fields(
+            [
+                (
+                    f"loc={c['loc_dtype']:16s} scale={c['scale_dtype']:16s}",
+                    f"eager={c['eager_dtype']:16s} compiled={c['compiled_dtype']:16s} "
+                    f"native={native_flag:8s}  {guard_flag}",
+                )
+            ]
+        )
+
+
 def _print_report(guard_name: str, report, *, no_color: bool) -> None:
     if guard_name == "as-strided-restride-oob":
         _print_as_strided_report(report, no_color=no_color)
@@ -181,6 +218,8 @@ def _print_report(guard_name: str, report, *, no_color: bool) -> None:
         _print_checkpoint_noise_report(report, no_color=no_color)
     elif guard_name == "dynamic-clamp":
         _print_dynamic_clamp_report(report, no_color=no_color)
+    elif guard_name == "normal-dtype-promotion":
+        _print_normal_dtype_promotion_report(report, no_color=no_color)
     else:
         _print_addcdiv_report(report, no_color=no_color)
 

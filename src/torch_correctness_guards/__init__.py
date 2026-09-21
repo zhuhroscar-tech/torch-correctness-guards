@@ -20,4 +20,8 @@ from .guards.dynamic_clamp import (  # noqa: F401
     diagnose as diagnose_dynamic_clamp,
     safe_clamp,
 )
+from .guards.normal_dtype_promotion import (  # noqa: F401
+    diagnose as diagnose_normal_dtype_promotion,
+    safe_compiled_normal_sample,
+)
 
