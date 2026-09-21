@@ -12,6 +12,7 @@ from torch_correctness_guards.guards import (
     dynamic_clamp,
     normal_dtype_promotion,
     shuffle_sample_frozen,
+    std_precision,
 )
 
 
@@ -59,6 +60,8 @@ def test_list_includes_migrated_guard(capsys):
     assert "Normal.sample" in out
     assert "shuffle-sample-frozen" in out
     assert "random.shuffle" in out
+    assert "std-precision" in out
+    assert "std/var" in out
 
 
 def test_run_json_includes_guard_name(monkeypatch, capsys):
@@ -312,3 +315,59 @@ def test_run_shuffle_sample_frozen_text_reports_guard_status(monkeypatch, capsys
     assert "random.shuffle/random.sample frozen at trace time reproduced" in out
     assert "safe_shuffle()/safe_sample() restore eager" in out
     assert "FROZEN" in out
+
+
+def _fake_std_precision_report(**overrides):
+    report = {
+        "torch_version": "9.9.9-fake",
+        "issue_urls": ["https://github.com/pytorch/pytorch/issues/197089"],
+        "std_cases": [
+            {
+                "op": "std",
+                "magnitude_exponent": 30,
+                "eager_value": 1.0,
+                "compiled_value": float("inf"),
+                "eager_is_finite": True,
+                "compiled_is_finite": False,
+                "diverges": True,
+                "guard_compiled_value": 1.0,
+                "guard_matches_eager": True,
+            }
+        ],
+        "var_cases": [],
+        "zero_gradient_cases": [
+            {
+                "magnitude_exponent": -30,
+                "eager_output": 1e-30,
+                "eager_grad_is_zero": False,
+                "compiled_output": 0.0,
+                "compiled_grad_is_zero": True,
+                "silent_zero_gradient_bug": True,
+                "guard_compiled_output": 1e-30,
+                "guard_grad_is_zero": False,
+                "guard_matches_eager": True,
+            }
+        ],
+        "any_std_divergence": True,
+        "any_silent_zero_gradient": True,
+        "guard_fully_correct": True,
+    }
+    report.update(overrides)
+    return report
+
+
+def test_run_std_precision_json_includes_guard_name(monkeypatch, capsys):
+    monkeypatch.setattr(std_precision, "diagnose", lambda: _fake_std_precision_report())
+    assert main(["run", "std-precision", "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["guard"] == "std-precision"
+    assert payload["guard_fully_correct"] is True
+
+
+def test_run_std_precision_text_reports_guard_status(monkeypatch, capsys):
+    monkeypatch.setattr(std_precision, "diagnose", lambda: _fake_std_precision_report())
+    assert main(["run", "std-precision", "--no-color"]) == 0
+    out = capsys.readouterr().out
+    assert "std/var precision divergence reproduced" in out
+    assert "silent all-zero std gradient reproduced" in out
+    assert "safe_std()/safe_var()/safe_var_mean()/safe_std_mean() match eager" in out

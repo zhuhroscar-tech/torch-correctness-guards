@@ -31,6 +31,10 @@ _GUARDS = {
         "description": "Dynamo freezes random.shuffle/random.sample results at trace time inside torch.compile",
         "module": "torch_correctness_guards.guards.shuffle_sample_frozen",
     },
+    "std-precision": {
+        "description": "Inductor std/var-family reductions use float32 accumulation where CPU eager uses double precision",
+        "module": "torch_correctness_guards.guards.std_precision",
+    },
 }
 
 
@@ -59,6 +63,10 @@ def _load_guard(name: str):
         from .guards import shuffle_sample_frozen
 
         return shuffle_sample_frozen
+    if name == "std-precision":
+        from .guards import std_precision
+
+        return std_precision
     raise KeyError(name)  # defensive; argparse constrains this.
 
 
@@ -247,6 +255,52 @@ def _print_shuffle_sample_frozen_report(report, *, no_color: bool) -> None:
         )
 
 
+def _print_std_precision_report(report, *, no_color: bool) -> None:
+    style = resolve_style(no_color_flag=no_color)
+    print_fields([("torch version", report["torch_version"])])
+
+    if report["any_std_divergence"]:
+        print(status_headline(style, "warn", "torch.compile(inductor) std/var precision divergence reproduced on this host"))
+    else:
+        print(status_headline(style, "info", "no eager-vs-compiled std/var precision divergence reproduced on this host"))
+
+    if report["any_silent_zero_gradient"]:
+        print(status_headline(style, "fail", "silent all-zero std gradient reproduced under torch.compile for small-magnitude input"))
+    else:
+        print(status_headline(style, "info", "no silent zero-gradient case reproduced on this host"))
+
+    if report["guard_fully_correct"]:
+        print(status_headline(style, "ok", "safe_std()/safe_var()/safe_var_mean()/safe_std_mean() match eager on every case"))
+    else:
+        print(status_headline(style, "fail", "guards did NOT match eager on at least one case"))
+
+    section("std cases (magnitude exponent -> eager vs compiled value)")
+    for c in report["std_cases"]:
+        flag = "DIVERGES" if c["diverges"] else "ok"
+        guard_flag = "guard-ok" if c["guard_matches_eager"] else "GUARD-FAILED"
+        print_fields(
+            [
+                (
+                    f"1e{c['magnitude_exponent']:+d}",
+                    f"eager={c['eager_value']!s:>24}  compiled={c['compiled_value']!s:>10}  {flag:9s}  {guard_flag}",
+                )
+            ]
+        )
+
+    section("zero-gradient cases (magnitude exponent -> eager vs compiled gradient)")
+    for c in report["zero_gradient_cases"]:
+        flag = "SILENT-ZERO-GRAD" if c["silent_zero_gradient_bug"] else "ok"
+        guard_flag = "guard-ok" if c["guard_matches_eager"] else "GUARD-FAILED"
+        print_fields(
+            [
+                (
+                    f"1e{c['magnitude_exponent']:+d}",
+                    f"eager_grad_zero={c['eager_grad_is_zero']!s:5s}  compiled_grad_zero={c['compiled_grad_is_zero']!s:5s}  {flag:17s}  {guard_flag}",
+                )
+            ]
+        )
+
+
 def _print_report(guard_name: str, report, *, no_color: bool) -> None:
     if guard_name == "as-strided-restride-oob":
         _print_as_strided_report(report, no_color=no_color)
@@ -258,6 +312,8 @@ def _print_report(guard_name: str, report, *, no_color: bool) -> None:
         _print_normal_dtype_promotion_report(report, no_color=no_color)
     elif guard_name == "shuffle-sample-frozen":
         _print_shuffle_sample_frozen_report(report, no_color=no_color)
+    elif guard_name == "std-precision":
+        _print_std_precision_report(report, no_color=no_color)
     else:
         _print_addcdiv_report(report, no_color=no_color)
 

@@ -14,6 +14,7 @@ The package replaces the older one-repo-per-guard pattern with one installable C
 | dynamic clamp | `dynamic-clamp` | pytorch/pytorch#194976, nvidia/Megatron-LM#6918 | Reproduces Inductor stale reuse of automatically-dynamic Python float bounds in `torch.clamp` and verifies the `safe_clamp` call-site guard. |
 | Normal.sample dtype promotion | `normal-dtype-promotion` | pytorch/pytorch#194547 | Reproduces `torch.compile` silently promoting `torch.distributions.Normal.sample()` output dtype when eager preserves the lower-precision `loc` dtype, and verifies the wrapper restores eager's dtype contract. |
 | shuffle/sample frozen RNG | `shuffle-sample-frozen` | pytorch/pytorch#197085 | Reproduces Dynamo baking `random.shuffle()` / `random.sample()` results into a compiled graph as trace-time constants and verifies graph-break wrappers restore eager per-call randomness. |
+| std/var precision | `std-precision` | pytorch/pytorch#197089 | Reproduces `torch.compile(backend="inductor")` accumulating `torch.std`/`torch.var`-family reductions in float32 where CPU eager uses double precision, and verifies float64-upcast guards preserve eager outputs and gradients. |
 
 ## Install
 
@@ -38,6 +39,7 @@ torch-guard run checkpoint-noise
 torch-guard run dynamic-clamp
 torch-guard run normal-dtype-promotion
 torch-guard run shuffle-sample-frozen
+torch-guard run std-precision
 torch-guard run addcdiv-stale-scalar --json
 ```
 
@@ -52,6 +54,7 @@ from torch_correctness_guards import safe_rrelu
 from torch_correctness_guards import safe_clamp
 from torch_correctness_guards import safe_compiled_normal_sample
 from torch_correctness_guards import safe_sample, safe_shuffle
+from torch_correctness_guards import safe_std, safe_var, safe_var_mean, safe_std_mean
 
 safe_bias_correction = make_safe_stale_scalar_step(torch)
 y = safe_as_strided(sliced, size, stride, storage_offset=None)
@@ -60,6 +63,7 @@ w = safe_clamp(x, max=limit)
 sample = safe_compiled_normal_sample(compiled_fn, eager_fn)(loc, scale)
 safe_shuffle(items)
 subset = safe_sample(population, k)
+std = safe_std(x)
 ```
 
 ## License

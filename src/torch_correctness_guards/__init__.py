@@ -31,4 +31,11 @@ from .guards.shuffle_sample_frozen import (  # noqa: F401
     safe_sample,
     safe_shuffle,
 )
+from .guards.std_precision import (  # noqa: F401
+    diagnose as diagnose_std_precision,
+    safe_std,
+    safe_std_mean,
+    safe_var,
+    safe_var_mean,
+)
 
