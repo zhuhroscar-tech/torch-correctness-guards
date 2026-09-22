@@ -15,6 +15,7 @@ The package replaces the older one-repo-per-guard pattern with one installable C
 | CPU backward NaN tail | `cpu-backward-nan-tail` | pytorch/pytorch#195075 | Reproduces CPU backward kernels returning different gradients at NaN elements in SIMD vector blocks versus scalar tails, then verifies length-independent `safe_*_backward` guards. |
 | Dynamo closure descriptor | `dynamo-closure-descriptor` | pytorch/pytorch#197811, pytorch/pytorch#197860, pytorch/pytorch#197859 | Reproduces Dynamo stale graph reuse for closure-captured Tensor method descriptors, bound-method `__code__` mutation, and `nn.Module` instance-`__dict__` submodule shadowing; verifies graph-break call-site guards restore eager semantics. |
 | dynamic clamp | `dynamic-clamp` | pytorch/pytorch#194976, nvidia/Megatron-LM#6918 | Reproduces Inductor stale reuse of automatically-dynamic Python float bounds in `torch.clamp` and verifies the `safe_clamp` call-site guard. |
+| embedding_bag frequency scaling | `embeddingbag-freq-scale` | pytorch/pytorch#190061 | Reproduces the MPS backend silently ignoring `scale_grad_by_freq=True` in `embedding_bag` backward and verifies `safe_embedding_bag` matches the CPU-oracle gradient. |
 | Normal.sample dtype promotion | `normal-dtype-promotion` | pytorch/pytorch#194547 | Reproduces `torch.compile` silently promoting `torch.distributions.Normal.sample()` output dtype when eager preserves the lower-precision `loc` dtype, and verifies the wrapper restores eager's dtype contract. |
 | shuffle/sample frozen RNG | `shuffle-sample-frozen` | pytorch/pytorch#197085 | Reproduces Dynamo baking `random.shuffle()` / `random.sample()` results into a compiled graph as trace-time constants and verifies graph-break wrappers restore eager per-call randomness. |
 | std/var precision | `std-precision` | pytorch/pytorch#197089 | Reproduces `torch.compile(backend="inductor")` accumulating `torch.std`/`torch.var`-family reductions in float32 where CPU eager uses double precision, and verifies float64-upcast guards preserve eager outputs and gradients. |
@@ -44,6 +45,7 @@ torch-guard run compile-validation
 torch-guard run cpu-backward-nan-tail
 torch-guard run dynamo-closure-descriptor
 torch-guard run dynamic-clamp
+torch-guard run embeddingbag-freq-scale
 torch-guard run normal-dtype-promotion
 torch-guard run shuffle-sample-frozen
 torch-guard run std-precision
@@ -63,6 +65,7 @@ from torch_correctness_guards import safe_compiled_bernoulli
 from torch_correctness_guards import safe_hardtanh_backward, safe_logit_backward
 from torch_correctness_guards import safe_bound_method_call, safe_call, safe_module_forward
 from torch_correctness_guards import safe_clamp
+from torch_correctness_guards import safe_embedding_bag
 from torch_correctness_guards import safe_compiled_normal_sample
 from torch_correctness_guards import safe_sample, safe_shuffle
 from torch_correctness_guards import safe_std, safe_var, safe_var_mean, safe_std_mean
@@ -74,6 +77,7 @@ z = safe_rrelu(x, lower=0.125, upper=1 / 3, training=True)
 grad = safe_hardtanh_backward(grad_output, x)
 y = safe_call(torch.Tensor.__mul__, a, b)
 w = safe_clamp(x, max=limit)
+emb = safe_embedding_bag(idx, weight, offsets, mode="sum", scale_grad_by_freq=True)
 sample = safe_compiled_normal_sample(compiled_fn, eager_fn)(loc, scale)
 safe_shuffle(items)
 subset = safe_sample(population, k)

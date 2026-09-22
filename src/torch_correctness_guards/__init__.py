@@ -45,6 +45,12 @@ from .guards.dynamic_clamp import (  # noqa: F401
     diagnose as diagnose_dynamic_clamp,
     safe_clamp,
 )
+from .guards.embeddingbag_freq_scale import (  # noqa: F401
+    diagnose as diagnose_embeddingbag_freq_scale,
+    make_safe_embedding_bag,
+    mps_is_functional,
+    safe_embedding_bag,
+)
 from .guards.normal_dtype_promotion import (  # noqa: F401
     diagnose as diagnose_normal_dtype_promotion,
     safe_compiled_normal_sample,

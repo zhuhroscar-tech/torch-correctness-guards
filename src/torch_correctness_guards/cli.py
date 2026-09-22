@@ -35,6 +35,10 @@ _GUARDS = {
         "description": "Inductor stale automatically-dynamic Python float reused in torch.clamp bounds",
         "module": "torch_correctness_guards.guards.dynamic_clamp",
     },
+    "embeddingbag-freq-scale": {
+        "description": "MPS embedding_bag silently ignores scale_grad_by_freq=True in backward",
+        "module": "torch_correctness_guards.guards.embeddingbag_freq_scale",
+    },
     "normal-dtype-promotion": {
         "description": "torch.compile Normal.sample() silently promotes dtype away from eager loc dtype",
         "module": "torch_correctness_guards.guards.normal_dtype_promotion",
@@ -83,6 +87,10 @@ def _load_guard(name: str):
         from .guards import dynamic_clamp
 
         return dynamic_clamp
+    if name == "embeddingbag-freq-scale":
+        from .guards import embeddingbag_freq_scale
+
+        return embeddingbag_freq_scale
     if name == "normal-dtype-promotion":
         from .guards import normal_dtype_promotion
 
@@ -225,6 +233,38 @@ def _print_dynamic_clamp_report(report, *, no_color: bool) -> None:
                     f"call {c['call_index']}",
                     f"shape={c['shape']!s:10s} requires_grad={c['requires_grad']!s:5s} limit={c['limit']}  "
                     f"eager={c['eager_value']:.6f}  compiled={c['compiled_value']:.6f}  {flag:11s}  {guard_flag}",
+                )
+            ]
+        )
+
+
+def _print_embeddingbag_freq_scale_report(report, *, no_color: bool) -> None:
+    style = resolve_style(no_color_flag=no_color)
+    print_fields([("torch version", report["torch_version"]), ("tracking issue", report["issue_url"])])
+
+    if report["any_native_silently_wrong"]:
+        print(status_headline(style, "fail", "MPS embedding_bag(scale_grad_by_freq=True) silent bug reproduced on this host"))
+    else:
+        print(status_headline(style, "info", "no silent scale_grad_by_freq bug reproduced on this host's available devices"))
+
+    if report["guard_fully_correct"]:
+        print(status_headline(style, "ok", "safe_embedding_bag() matches the CPU-oracle gradient on every exercised device"))
+    else:
+        print(status_headline(style, "fail", "guard did NOT match the expected contract on at least one device"))
+
+    section("per-device results")
+    for c in report["cases"]:
+        if not c["ran"]:
+            print_fields([(c["device"], f"skipped: {c['skip_reason']}")])
+            continue
+        native_flag = "matches" if c["native_matches_oracle"] else "SILENTLY-WRONG"
+        guard_flag = "guard-ok" if c["guard_matches_oracle"] else "GUARD-FAILED"
+        print_fields(
+            [
+                (
+                    c["device"],
+                    f"native={c['native_grad_row1']} oracle={c['cpu_oracle_grad_row1']} "
+                    f"guard={c['guard_grad_row1']} native={native_flag} {guard_flag}",
                 )
             ]
         )
@@ -477,6 +517,8 @@ def _print_report(guard_name: str, report, *, no_color: bool) -> None:
         _print_dynamo_closure_descriptor_report(report, no_color=no_color)
     elif guard_name == "dynamic-clamp":
         _print_dynamic_clamp_report(report, no_color=no_color)
+    elif guard_name == "embeddingbag-freq-scale":
+        _print_embeddingbag_freq_scale_report(report, no_color=no_color)
     elif guard_name == "normal-dtype-promotion":
         _print_normal_dtype_promotion_report(report, no_color=no_color)
     elif guard_name == "shuffle-sample-frozen":
