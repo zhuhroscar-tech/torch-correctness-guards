@@ -22,6 +22,7 @@ from torch_correctness_guards.guards import (
     int64_index_truncation,
     normal_dtype_promotion,
     shuffle_sample_frozen,
+    softmax_dim,
     std_precision,
     tiled_reduction_tail_store,
     transpose_argmin,
@@ -92,6 +93,8 @@ def test_list_includes_migrated_guard(capsys):
     assert "Normal.sample" in out
     assert "shuffle-sample-frozen" in out
     assert "random.shuffle" in out
+    assert "softmax-dim" in out
+    assert "softmax dim" in out
     assert "std-precision" in out
     assert "std/var" in out
     assert "tiled-reduction-tail-store" in out
@@ -931,3 +934,42 @@ def test_run_tiled_reduction_tail_store_text_reports_guard_status(monkeypatch, c
     assert "2D-tiled reduction tail-store bug reproduced" in out
     assert "guard never silently trusts" in out
     assert "BUG" in out
+
+
+def _fake_softmax_dim_report(**overrides):
+    report = {
+        "torch_version": "9.9.9-fake",
+        "issue_urls": ["https://github.com/pytorch/pytorch/issues/196468"],
+        "cases": [
+            {
+                "dim": 0,
+                "shape": [4, 5, 5, 8],
+                "eager_requested_vs_compiled_native_rel_diff": 0.58,
+                "eager_lastaxis_vs_compiled_native_rel_diff": 1.7e-7,
+                "native_diverges": True,
+                "native_matches_wrong_lastaxis": True,
+                "guard_matches_eager": True,
+            }
+        ],
+        "any_softmax_dim_divergence": True,
+        "guard_fully_correct": True,
+    }
+    report.update(overrides)
+    return report
+
+
+def test_run_softmax_dim_json_includes_guard_name(monkeypatch, capsys):
+    monkeypatch.setattr(softmax_dim, "diagnose", lambda: _fake_softmax_dim_report())
+    assert main(["run", "softmax-dim", "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["guard"] == "softmax-dim"
+    assert payload["guard_fully_correct"] is True
+
+
+def test_run_softmax_dim_text_reports_guard_status(monkeypatch, capsys):
+    monkeypatch.setattr(softmax_dim, "diagnose", lambda: _fake_softmax_dim_report())
+    assert main(["run", "softmax-dim", "--no-color"]) == 0
+    out = capsys.readouterr().out
+    assert "softmax-dim attention rewrite divergence reproduced" in out
+    assert "safe_softmax_attention() matches eager" in out
+    assert "matches-wrong-lastaxis" in out

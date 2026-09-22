@@ -90,6 +90,10 @@ from .guards.scatter_copyback_alias import (  # noqa: F401
     diagnose as diagnose_scatter_copyback_alias,
     safe_compiled_scatter_returning,
 )
+from .guards.softmax_dim import (  # noqa: F401
+    diagnose as diagnose_softmax_dim,
+    safe_softmax_attention,
+)
 from .guards.normal_dtype_promotion import (  # noqa: F401
     diagnose as diagnose_normal_dtype_promotion,
     safe_compiled_normal_sample,

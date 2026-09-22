@@ -75,6 +75,10 @@ _GUARDS = {
         "description": "Inductor return-value aliasing drift for scatter copy-back and no-op elimination rewrites",
         "module": "torch_correctness_guards.guards.scatter_copyback_alias",
     },
+    "softmax-dim": {
+        "description": "Inductor attention-pattern rewrite ignores explicit non-last-axis softmax dim",
+        "module": "torch_correctness_guards.guards.softmax_dim",
+    },
     "tiled-reduction-tail-store": {
         "description": "Inductor CPU 2D-tiled reduction tail store can overrun or corrupt outputs",
         "module": "torch_correctness_guards.guards.tiled_reduction_tail_store",
@@ -167,6 +171,10 @@ def _load_guard(name: str):
         from .guards import scatter_copyback_alias
 
         return scatter_copyback_alias
+    if name == "softmax-dim":
+        from .guards import softmax_dim
+
+        return softmax_dim
     if name == "tiled-reduction-tail-store":
         from .guards import tiled_reduction_tail_store
 
@@ -663,6 +671,37 @@ def _print_scatter_copyback_alias_report(report, *, no_color: bool) -> None:
         print_fields([(f"op={c['op_name']}", f"native={native_flag:18s}  {guard_flag}")])
 
 
+def _print_softmax_dim_report(report, *, no_color: bool) -> None:
+    style = resolve_style(no_color_flag=no_color)
+    print_fields([("torch version", report["torch_version"])])
+
+    if report["any_softmax_dim_divergence"]:
+        print(status_headline(style, "fail", "torch.compile(inductor) softmax-dim attention rewrite divergence reproduced on this host"))
+    else:
+        print(status_headline(style, "info", "no softmax-dim attention rewrite divergence reproduced on this host's installed torch build"))
+
+    if report["guard_fully_correct"]:
+        print(status_headline(style, "ok", "safe_softmax_attention() matches eager on every case, including under torch.compile"))
+    else:
+        print(status_headline(style, "fail", "safe_softmax_attention() did NOT match eager on at least one case"))
+
+    section("softmax-dim cases (dim, shape -> requested-vs-native diff / wrong-last-axis diff)")
+    for c in report["cases"]:
+        flag = "DIVERGES" if c["native_diverges"] else "ok"
+        wrong_axis_flag = "matches-wrong-lastaxis" if c["native_matches_wrong_lastaxis"] else "not-lastaxis-match"
+        guard_flag = "guard-ok" if c["guard_matches_eager"] else "GUARD-FAILED"
+        print_fields(
+            [
+                (
+                    f"dim={c['dim']} shape={c['shape']}",
+                    f"requested={c['eager_requested_vs_compiled_native_rel_diff']:.6f}  "
+                    f"lastaxis={c['eager_lastaxis_vs_compiled_native_rel_diff']:.2e}  "
+                    f"{flag:9s}  {wrong_axis_flag:24s}  {guard_flag}",
+                )
+            ]
+        )
+
+
 def _print_compile_validation_report(report, *, no_color: bool) -> None:
     style = resolve_style(no_color_flag=no_color)
     print_fields([("torch version", report["torch_version"])])
@@ -1002,6 +1041,8 @@ def _print_report(guard_name: str, report, *, no_color: bool) -> None:
         _print_int64_index_truncation_report(report, no_color=no_color)
     elif guard_name == "scatter-copyback-alias":
         _print_scatter_copyback_alias_report(report, no_color=no_color)
+    elif guard_name == "softmax-dim":
+        _print_softmax_dim_report(report, no_color=no_color)
     elif guard_name == "normal-dtype-promotion":
         _print_normal_dtype_promotion_report(report, no_color=no_color)
     elif guard_name == "shuffle-sample-frozen":
