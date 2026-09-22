@@ -11,6 +11,7 @@ from torch_correctness_guards.guards import (
     checkpoint_noise,
     compile_validation,
     cpu_backward_nan_tail,
+    dynamo_closure_descriptor,
     dynamic_clamp,
     normal_dtype_promotion,
     shuffle_sample_frozen,
@@ -61,6 +62,8 @@ def test_list_includes_migrated_guard(capsys):
     assert "input validation" in out
     assert "cpu-backward-nan-tail" in out
     assert "NaN gradients" in out
+    assert "dynamo-closure-descriptor" in out
+    assert "closure-captured Tensor descriptors" in out
     assert "dynamic-clamp" in out
     assert "torch.clamp" in out
     assert "normal-dtype-promotion" in out
@@ -341,6 +344,46 @@ def test_run_cpu_backward_nan_tail_text_reports_guard_status(monkeypatch, capsys
     assert "length-dependent NaN-gradient divergence reproduced" in out
     assert "every safe_* backward guard is length-independent" in out
     assert "LENGTH-DEP-BUG" in out
+
+
+def _fake_dynamo_closure_descriptor_report(**overrides):
+    report = {
+        "torch_version": "9.9.9-fake",
+        "issue_urls": ["https://github.com/pytorch/pytorch/issues/197811"],
+        "cases": [
+            {
+                "op_name": "__mul__",
+                "a": 6.0,
+                "b": 3.0,
+                "eager_result": 18.0,
+                "compiled_result": 9.0,
+                "guard_result": 18.0,
+                "stale_reuse_bug": True,
+                "guard_matches_eager": True,
+            }
+        ],
+        "any_stale_reuse_bug": True,
+        "guard_fully_correct": True,
+    }
+    report.update(overrides)
+    return report
+
+
+def test_run_dynamo_closure_descriptor_json_includes_guard_name(monkeypatch, capsys):
+    monkeypatch.setattr(dynamo_closure_descriptor, "diagnose", lambda: _fake_dynamo_closure_descriptor_report())
+    assert main(["run", "dynamo-closure-descriptor", "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["guard"] == "dynamo-closure-descriptor"
+    assert payload["guard_fully_correct"] is True
+
+
+def test_run_dynamo_closure_descriptor_text_reports_guard_status(monkeypatch, capsys):
+    monkeypatch.setattr(dynamo_closure_descriptor, "diagnose", lambda: _fake_dynamo_closure_descriptor_report())
+    assert main(["run", "dynamo-closure-descriptor", "--no-color"]) == 0
+    out = capsys.readouterr().out
+    assert "closure-descriptor graph-reuse divergence reproduced" in out
+    assert "safe_call() matches eager" in out
+    assert "STALE-REUSE" in out
 
 
 def _fake_normal_dtype_promotion_report(**overrides):

@@ -27,6 +27,10 @@ _GUARDS = {
         "description": "CPU backward kernels return NaN gradients differently in SIMD vector blocks versus scalar tails",
         "module": "torch_correctness_guards.guards.cpu_backward_nan_tail",
     },
+    "dynamo-closure-descriptor": {
+        "description": "Dynamo stale graph reuse for closure-captured Tensor descriptors and related guard omissions",
+        "module": "torch_correctness_guards.guards.dynamo_closure_descriptor",
+    },
     "dynamic-clamp": {
         "description": "Inductor stale automatically-dynamic Python float reused in torch.clamp bounds",
         "module": "torch_correctness_guards.guards.dynamic_clamp",
@@ -71,6 +75,10 @@ def _load_guard(name: str):
         from .guards import cpu_backward_nan_tail
 
         return cpu_backward_nan_tail
+    if name == "dynamo-closure-descriptor":
+        from .guards import dynamo_closure_descriptor
+
+        return dynamo_closure_descriptor
     if name == "dynamic-clamp":
         from .guards import dynamic_clamp
 
@@ -426,6 +434,36 @@ def _print_transpose_argmin_report(report, *, no_color: bool) -> None:
         )
 
 
+def _print_dynamo_closure_descriptor_report(report, *, no_color: bool) -> None:
+    style = resolve_style(no_color_flag=no_color)
+    print_fields([("torch version", report["torch_version"])])
+
+    if report["any_stale_reuse_bug"]:
+        print(status_headline(style, "warn", "Dynamo closure-descriptor graph-reuse divergence reproduced on this host"))
+    else:
+        print(status_headline(style, "info", "no closure-descriptor graph-reuse divergence reproduced on this host's installed torch build"))
+
+    if report["guard_fully_correct"]:
+        print(status_headline(style, "ok", "safe_call() matches eager on every call, including under torch.compile"))
+    else:
+        print(status_headline(style, "fail", "safe_call() did NOT match eager on at least one call"))
+
+    section("cases (captured op -> eager vs compiled(native) vs guarded)")
+    for c in report["cases"]:
+        flag = "STALE-REUSE" if c["stale_reuse_bug"] else "ok"
+        guard_flag = "guard-ok" if c["guard_matches_eager"] else "GUARD-FAILED"
+        print_fields(
+            [
+                (
+                    f"op {c['op_name']}",
+                    f"a={c['a']} b={c['b']} eager={c['eager_result']:.6f} "
+                    f"compiled={c['compiled_result']:.6f} guarded={c['guard_result']:.6f} "
+                    f"{flag:11s} {guard_flag}",
+                )
+            ]
+        )
+
+
 def _print_report(guard_name: str, report, *, no_color: bool) -> None:
     if guard_name == "as-strided-restride-oob":
         _print_as_strided_report(report, no_color=no_color)
@@ -435,6 +473,8 @@ def _print_report(guard_name: str, report, *, no_color: bool) -> None:
         _print_compile_validation_report(report, no_color=no_color)
     elif guard_name == "cpu-backward-nan-tail":
         _print_cpu_backward_nan_tail_report(report, no_color=no_color)
+    elif guard_name == "dynamo-closure-descriptor":
+        _print_dynamo_closure_descriptor_report(report, no_color=no_color)
     elif guard_name == "dynamic-clamp":
         _print_dynamic_clamp_report(report, no_color=no_color)
     elif guard_name == "normal-dtype-promotion":

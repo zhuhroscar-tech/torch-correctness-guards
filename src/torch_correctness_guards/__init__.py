@@ -33,6 +33,14 @@ from .guards.cpu_backward_nan_tail import (  # noqa: F401
     safe_logit_backward,
     safe_shrink_backward,
 )
+from .guards.dynamo_closure_descriptor import (  # noqa: F401
+    diagnose as diagnose_dynamo_closure_descriptor,
+    diagnose_bound_method_guard,
+    diagnose_module_shadow_guard,
+    safe_bound_method_call,
+    safe_call,
+    safe_module_forward,
+)
 from .guards.dynamic_clamp import (  # noqa: F401
     diagnose as diagnose_dynamic_clamp,
     safe_clamp,
