@@ -22,6 +22,7 @@ The package replaces the older one-repo-per-guard pattern with one installable C
 | expand fill | `expand-fill` | pytorch/pytorch#197448 | Reproduces Inductor writing wrong values for `.fill_(scalar)` on a broadcast view created by `Tensor.expand()` and verifies `safe_fill_` matches eager. |
 | fp16 LayerNorm tail | `fp16-layernorm-tail` | none filed | Reproduces CPU float16 `layer_norm` returning nonzero output for exact-constant rows and verifies `safe_layer_norm` computes through a float32 upcast. |
 | full dtype | `full-dtype` | pytorch/pytorch#194062 | Reproduces Inductor dropping `torch.full(..., dtype=...)` casts for symbolic fills, including skipped narrow-integer overflow checks, and verifies `safe_full` restores eager execution. |
+| in-place slice-shift aliasing | `inplace-slice-shift-aliasing` | pytorch/pytorch#197829 | Reproduces Inductor corrupting `x[1:] = x[:-1].clone()` style overlapping row-shift assignments and verifies `safe_slice_shift` restores eager semantics. |
 | 2D tiled reduction tail store | `tiled-reduction-tail-store` | pytorch/pytorch#196681 | Reproduces Inductor's CPU 2D-tiled reduction tail-store overrun/corruption in isolated subprocesses and verifies `safe_compiled_reduction` never silently trusts a corrupted result. |
 | Normal.sample dtype promotion | `normal-dtype-promotion` | pytorch/pytorch#194547 | Reproduces `torch.compile` silently promoting `torch.distributions.Normal.sample()` output dtype when eager preserves the lower-precision `loc` dtype, and verifies the wrapper restores eager's dtype contract. |
 | shuffle/sample frozen RNG | `shuffle-sample-frozen` | pytorch/pytorch#197085 | Reproduces Dynamo baking `random.shuffle()` / `random.sample()` results into a compiled graph as trace-time constants and verifies graph-break wrappers restore eager per-call randomness. |
@@ -59,6 +60,7 @@ torch-guard run embeddingbag-freq-scale
 torch-guard run expand-fill
 torch-guard run fp16-layernorm-tail
 torch-guard run full-dtype
+torch-guard run inplace-slice-shift-aliasing
 torch-guard run tiled-reduction-tail-store
 torch-guard run normal-dtype-promotion
 torch-guard run shuffle-sample-frozen
@@ -86,6 +88,7 @@ from torch_correctness_guards import safe_embedding_bag
 from torch_correctness_guards import safe_fill_
 from torch_correctness_guards import safe_layer_norm
 from torch_correctness_guards import safe_full
+from torch_correctness_guards import safe_slice_shift
 from torch_correctness_guards import safe_compiled_reduction
 from torch_correctness_guards import safe_compiled_normal_sample
 from torch_correctness_guards import safe_sample, safe_shuffle
@@ -103,6 +106,7 @@ emb = safe_embedding_bag(idx, weight, offsets, mode="sum", scale_grad_by_freq=Tr
 safe_fill_(x.expand(3, -1), 2.0)
 ln = safe_layer_norm(x, (x.shape[-1],))
 mask = safe_full((2,), fill_value, dtype=torch.bool)
+safe_slice_shift(x, shift=1, dim=0)
 checked = safe_compiled_reduction(compiled_fn, eager_fn)(x)
 safe_dup_index_assign(v, idx, 1.0)
 sample = safe_compiled_normal_sample(compiled_fn, eager_fn)(loc, scale)

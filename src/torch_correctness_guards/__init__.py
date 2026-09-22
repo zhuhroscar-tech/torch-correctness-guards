@@ -76,6 +76,10 @@ from .guards.full_dtype import (  # noqa: F401
     diagnose as diagnose_full_dtype,
     safe_full,
 )
+from .guards.inplace_slice_shift_aliasing import (  # noqa: F401
+    diagnose as diagnose_inplace_slice_shift_aliasing,
+    safe_slice_shift,
+)
 from .guards.normal_dtype_promotion import (  # noqa: F401
     diagnose as diagnose_normal_dtype_promotion,
     safe_compiled_normal_sample,

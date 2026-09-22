@@ -18,6 +18,7 @@ from torch_correctness_guards.guards import (
     equality_fusion,
     expand_fill,
     full_dtype,
+    inplace_slice_shift_aliasing,
     normal_dtype_promotion,
     shuffle_sample_frozen,
     std_precision,
@@ -82,6 +83,8 @@ def test_list_includes_migrated_guard(capsys):
     assert "Tensor.expand" in out
     assert "full-dtype" in out
     assert "torch.full" in out
+    assert "inplace-slice-shift-aliasing" in out
+    assert "slice-shift" in out
     assert "normal-dtype-promotion" in out
     assert "Normal.sample" in out
     assert "shuffle-sample-frozen" in out
@@ -626,6 +629,45 @@ def test_run_full_dtype_text_reports_guard_status(monkeypatch, capsys):
     assert "bool-fill dtype-cast divergence reproduced" in out
     assert "int8 overflow check silently skipped" in out
     assert "safe_full() matches eager" in out
+
+
+def _fake_inplace_slice_shift_aliasing_report(**overrides):
+    report = {
+        "torch_version": "9.9.9-fake",
+        "issue_url": "https://github.com/pytorch/pytorch/issues/197829",
+        "cases": [
+            {
+                "shape": [3, 16, 16],
+                "shift": 1,
+                "eager_correct": True,
+                "compiled_mismatches": 256,
+                "compiled_total": 768,
+                "compiled_matches_eager": False,
+                "guarded_matches_eager": True,
+            }
+        ],
+        "any_native_bug": True,
+        "guard_fully_correct": True,
+    }
+    report.update(overrides)
+    return report
+
+
+def test_run_inplace_slice_shift_aliasing_json_includes_guard_name(monkeypatch, capsys):
+    monkeypatch.setattr(inplace_slice_shift_aliasing, "diagnose", lambda: _fake_inplace_slice_shift_aliasing_report())
+    assert main(["run", "inplace-slice-shift-aliasing", "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["guard"] == "inplace-slice-shift-aliasing"
+    assert payload["guard_fully_correct"] is True
+
+
+def test_run_inplace_slice_shift_aliasing_text_reports_guard_status(monkeypatch, capsys):
+    monkeypatch.setattr(inplace_slice_shift_aliasing, "diagnose", lambda: _fake_inplace_slice_shift_aliasing_report())
+    assert main(["run", "inplace-slice-shift-aliasing", "--no-color"]) == 0
+    out = capsys.readouterr().out
+    assert "in-place slice-shift aliasing bug reproduced" in out
+    assert "safe_slice_shift() restores eager" in out
+    assert "WRONG (256/768)" in out
 
 
 def _fake_normal_dtype_promotion_report(**overrides):

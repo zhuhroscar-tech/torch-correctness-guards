@@ -63,6 +63,10 @@ _GUARDS = {
         "description": "Inductor torch.full symbolic fill skips dtype cast and narrow-integer overflow checks",
         "module": "torch_correctness_guards.guards.full_dtype",
     },
+    "inplace-slice-shift-aliasing": {
+        "description": "Inductor in-place slice-shift assignment corrupts overlapping source/target storage",
+        "module": "torch_correctness_guards.guards.inplace_slice_shift_aliasing",
+    },
     "tiled-reduction-tail-store": {
         "description": "Inductor CPU 2D-tiled reduction tail store can overrun or corrupt outputs",
         "module": "torch_correctness_guards.guards.tiled_reduction_tail_store",
@@ -143,6 +147,10 @@ def _load_guard(name: str):
         from .guards import full_dtype
 
         return full_dtype
+    if name == "inplace-slice-shift-aliasing":
+        from .guards import inplace_slice_shift_aliasing
+
+        return inplace_slice_shift_aliasing
     if name == "tiled-reduction-tail-store":
         from .guards import tiled_reduction_tail_store
 
@@ -535,6 +543,38 @@ def _print_full_dtype_report(report, *, no_color: bool) -> None:
             )
 
 
+def _print_inplace_slice_shift_aliasing_report(report, *, no_color: bool) -> None:
+    style = resolve_style(no_color_flag=no_color)
+    print_fields([("torch version", report["torch_version"]), ("tracking issue", report["issue_url"])])
+
+    if report["any_native_bug"]:
+        print(status_headline(style, "fail", "Inductor in-place slice-shift aliasing bug reproduced on this host (pytorch#197829)"))
+    else:
+        print(status_headline(style, "info", "no in-place slice-shift aliasing divergence reproduced on this host's installed torch build"))
+
+    if report["guard_fully_correct"]:
+        print(status_headline(style, "ok", "safe_slice_shift() restores eager's correct semantics on every case"))
+    else:
+        print(status_headline(style, "fail", "guard did NOT restore correct semantics on at least one case"))
+
+    section("cases (shape, shift -> compiled mismatches / guard result)")
+    for c in report["cases"]:
+        native_flag = (
+            f"WRONG ({c['compiled_mismatches']}/{c['compiled_total']})"
+            if not c["compiled_matches_eager"]
+            else "ok"
+        )
+        guard_flag = "guard-ok" if c["guarded_matches_eager"] else "GUARD-FAILED"
+        print_fields(
+            [
+                (
+                    f"shape={c['shape']} shift={c['shift']}",
+                    f"eager_correct={c['eager_correct']}  native={native_flag:20s}  {guard_flag}",
+                )
+            ]
+        )
+
+
 def _print_compile_validation_report(report, *, no_color: bool) -> None:
     style = resolve_style(no_color_flag=no_color)
     print_fields([("torch version", report["torch_version"])])
@@ -868,6 +908,8 @@ def _print_report(guard_name: str, report, *, no_color: bool) -> None:
         _print_fp16_layernorm_tail_report(report, no_color=no_color)
     elif guard_name == "full-dtype":
         _print_full_dtype_report(report, no_color=no_color)
+    elif guard_name == "inplace-slice-shift-aliasing":
+        _print_inplace_slice_shift_aliasing_report(report, no_color=no_color)
     elif guard_name == "normal-dtype-promotion":
         _print_normal_dtype_promotion_report(report, no_color=no_color)
     elif guard_name == "shuffle-sample-frozen":
