@@ -77,6 +77,11 @@ from .guards.std_precision import (  # noqa: F401
     safe_var,
     safe_var_mean,
 )
+from .guards.tiled_reduction_tail_store import (  # noqa: F401
+    TailStoreOverrunSuspected,
+    diagnose as diagnose_tiled_reduction_tail_store,
+    safe_compiled_reduction,
+)
 from .guards.transpose_argmin import (  # noqa: F401
     diagnose as diagnose_transpose_argmin,
     safe_reduce_index,

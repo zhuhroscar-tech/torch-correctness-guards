@@ -47,6 +47,10 @@ _GUARDS = {
         "description": "CPU float16 layer_norm returns nonzero output for exact-constant rows",
         "module": "torch_correctness_guards.guards.fp16_layernorm_tail",
     },
+    "tiled-reduction-tail-store": {
+        "description": "Inductor CPU 2D-tiled reduction tail store can overrun or corrupt outputs",
+        "module": "torch_correctness_guards.guards.tiled_reduction_tail_store",
+    },
     "normal-dtype-promotion": {
         "description": "torch.compile Normal.sample() silently promotes dtype away from eager loc dtype",
         "module": "torch_correctness_guards.guards.normal_dtype_promotion",
@@ -107,6 +111,10 @@ def _load_guard(name: str):
         from .guards import fp16_layernorm_tail
 
         return fp16_layernorm_tail
+    if name == "tiled-reduction-tail-store":
+        from .guards import tiled_reduction_tail_store
+
+        return tiled_reduction_tail_store
     if name == "normal-dtype-promotion":
         from .guards import normal_dtype_promotion
 
@@ -563,6 +571,40 @@ def _print_transpose_argmin_report(report, *, no_color: bool) -> None:
         )
 
 
+def _print_tiled_reduction_tail_store_report(report, *, no_color: bool) -> None:
+    style = resolve_style(no_color_flag=no_color)
+    print_fields([("torch version", report["torch_version"]), ("tracking issue", report["issue_url"])])
+
+    if report["any_bug_reproduced"]:
+        print(status_headline(style, "fail", "Inductor 2D-tiled reduction tail-store bug reproduced on this host"))
+    else:
+        print(status_headline(style, "info", "bug NOT reproduced on this host's installed torch build"))
+
+    if report["any_crash_observed"]:
+        print(status_headline(style, "warn", "at least one raw compiled case crashed in an isolated worker process"))
+
+    if report["guard_fully_correct"]:
+        print(status_headline(style, "ok", "guard never silently trusts a corrupted result across all exercised sizes"))
+    else:
+        print(status_headline(style, "fail", "guard did NOT behave correctly for at least one size"))
+
+    section("tile-boundary cases (size -> raw divergence/crash vs guarded behavior)")
+    for c in report["cases"]:
+        bug_flag = "BUG" if c["bug_reproduced"] else "ok"
+        guard_flag = "guard-ok" if c["guard_behaved_correctly"] else "GUARD-FAILED"
+        diff = c["max_abs_diff"] if c["max_abs_diff"] is not None else "n/a"
+        print_fields(
+            [
+                (
+                    f"n={c['size']}",
+                    f"aligned={c['aligned_to_vector_width']!s:5s} max_diff={diff!s:>8s} "
+                    f"bare_crashed={c['crashed_bare']!s:5s} guard_raised={c['guard_raised']!s:5s} "
+                    f"guard_crashed={c['crashed_guarded']!s:5s} {bug_flag:4s} {guard_flag}",
+                )
+            ]
+        )
+
+
 def _print_dynamo_closure_descriptor_report(report, *, no_color: bool) -> None:
     style = resolve_style(no_color_flag=no_color)
     print_fields([("torch version", report["torch_version"])])
@@ -618,6 +660,8 @@ def _print_report(guard_name: str, report, *, no_color: bool) -> None:
         _print_shuffle_sample_frozen_report(report, no_color=no_color)
     elif guard_name == "std-precision":
         _print_std_precision_report(report, no_color=no_color)
+    elif guard_name == "tiled-reduction-tail-store":
+        _print_tiled_reduction_tail_store_report(report, no_color=no_color)
     elif guard_name == "transpose-argmin":
         _print_transpose_argmin_report(report, no_color=no_color)
     else:

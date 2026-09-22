@@ -17,6 +17,7 @@ from torch_correctness_guards.guards import (
     normal_dtype_promotion,
     shuffle_sample_frozen,
     std_precision,
+    tiled_reduction_tail_store,
     transpose_argmin,
 )
 
@@ -75,6 +76,8 @@ def test_list_includes_migrated_guard(capsys):
     assert "random.shuffle" in out
     assert "std-precision" in out
     assert "std/var" in out
+    assert "tiled-reduction-tail-store" in out
+    assert "2D-tiled reduction tail store" in out
     assert "transpose-argmin" in out
     assert "argmin/argmax" in out
 
@@ -605,3 +608,45 @@ def test_run_transpose_argmin_text_reports_guard_status(monkeypatch, capsys):
     assert "transpose+op+argmin/argmax index divergence reproduced" in out
     assert "safe_reduce_index() matches eager" in out
     assert "DIVERGES" in out
+
+
+def _fake_tiled_reduction_tail_store_report(**overrides):
+    report = {
+        "torch_version": "9.9.9-fake",
+        "issue_url": "https://github.com/pytorch/pytorch/issues/196681",
+        "fix_pr_url": "https://github.com/pytorch/pytorch/pull/196882",
+        "cases": [
+            {
+                "size": 66,
+                "aligned_to_vector_width": False,
+                "max_abs_diff": 42.0,
+                "bug_reproduced": True,
+                "crashed_bare": False,
+                "guard_raised": True,
+                "crashed_guarded": False,
+                "guard_behaved_correctly": True,
+            }
+        ],
+        "any_bug_reproduced": True,
+        "any_crash_observed": False,
+        "guard_fully_correct": True,
+    }
+    report.update(overrides)
+    return report
+
+
+def test_run_tiled_reduction_tail_store_json_includes_guard_name(monkeypatch, capsys):
+    monkeypatch.setattr(tiled_reduction_tail_store, "diagnose", lambda: _fake_tiled_reduction_tail_store_report())
+    assert main(["run", "tiled-reduction-tail-store", "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["guard"] == "tiled-reduction-tail-store"
+    assert payload["guard_fully_correct"] is True
+
+
+def test_run_tiled_reduction_tail_store_text_reports_guard_status(monkeypatch, capsys):
+    monkeypatch.setattr(tiled_reduction_tail_store, "diagnose", lambda: _fake_tiled_reduction_tail_store_report())
+    assert main(["run", "tiled-reduction-tail-store", "--no-color"]) == 0
+    out = capsys.readouterr().out
+    assert "2D-tiled reduction tail-store bug reproduced" in out
+    assert "guard never silently trusts" in out
+    assert "BUG" in out
