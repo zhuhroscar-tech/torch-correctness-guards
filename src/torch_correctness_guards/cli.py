@@ -43,6 +43,10 @@ _GUARDS = {
         "description": "Inductor wrong values for fill_ on broadcast views created by Tensor.expand()",
         "module": "torch_correctness_guards.guards.expand_fill",
     },
+    "fp16-layernorm-tail": {
+        "description": "CPU float16 layer_norm returns nonzero output for exact-constant rows",
+        "module": "torch_correctness_guards.guards.fp16_layernorm_tail",
+    },
     "normal-dtype-promotion": {
         "description": "torch.compile Normal.sample() silently promotes dtype away from eager loc dtype",
         "module": "torch_correctness_guards.guards.normal_dtype_promotion",
@@ -99,6 +103,10 @@ def _load_guard(name: str):
         from .guards import expand_fill
 
         return expand_fill
+    if name == "fp16-layernorm-tail":
+        from .guards import fp16_layernorm_tail
+
+        return fp16_layernorm_tail
     if name == "normal-dtype-promotion":
         from .guards import normal_dtype_promotion
 
@@ -302,6 +310,50 @@ def _print_expand_fill_report(report, *, no_color: bool) -> None:
                     f"rows={c['expand_rows']} base={c['base_values']} fill={c['fill_value']}",
                     f"eager={c['eager_result']}  compiled_native={c['compiled_native_result']}  "
                     f"compiled_guarded={c['compiled_guarded_result']}  {flag:9s}  {guard_flag}",
+                )
+            ]
+        )
+
+
+def _print_fp16_layernorm_tail_report(report, *, no_color: bool) -> None:
+    style = resolve_style(no_color_flag=no_color)
+    print_fields([("torch version", report["torch_version"])])
+
+    if report["any_bug_present"]:
+        print(status_headline(style, "fail", "CPU float16 layer_norm exact-constant-row bug reproduced on this host"))
+        if report["bug_signature_confirmed"]:
+            print(status_headline(style, "info", "confirmed signature: wrong nonzero outputs match a documented tail or whole-row pattern"))
+    else:
+        print(status_headline(style, "info", "bug NOT reproduced on this host's installed torch build"))
+
+    if report["guard_fully_correct"]:
+        print(status_headline(style, "ok", "safe_layer_norm() is exact-zero on constant rows and at least as accurate on non-constant rows"))
+    else:
+        print(status_headline(style, "fail", "safe_layer_norm() did NOT produce a correct result on at least one case"))
+
+    section("constant-row cases (length -> native nonzero count vs guard nonzero count)")
+    for c in report["constant_cases"]:
+        native_flag = "BUG" if c["buggy_nonzero_count"] else "ok"
+        guard_flag = "guard-ok" if c["guard_is_correct"] else "GUARD-FAILED"
+        print_fields(
+            [
+                (
+                    f"n={c['length']}",
+                    f"native_nonzero={c['buggy_nonzero_count']} expected={c['expected_nonzero_count']} "
+                    f"guard_nonzero={c['guard_nonzero_count']} {native_flag:4s} {guard_flag}",
+                )
+            ]
+        )
+
+    section("non-constant accuracy cases (length -> native diff vs guard diff to fp64 oracle)")
+    for c in report["nonconstant_cases"]:
+        guard_flag = "guard-ok" if c["guard_at_least_as_accurate"] else "GUARD-FAILED"
+        print_fields(
+            [
+                (
+                    f"n={c['length']}",
+                    f"native_diff={c['max_abs_diff_native_vs_reference']:.6e} "
+                    f"guard_diff={c['max_abs_diff_guard_vs_reference']:.6e} {guard_flag}",
                 )
             ]
         )
@@ -558,6 +610,8 @@ def _print_report(guard_name: str, report, *, no_color: bool) -> None:
         _print_embeddingbag_freq_scale_report(report, no_color=no_color)
     elif guard_name == "expand-fill":
         _print_expand_fill_report(report, no_color=no_color)
+    elif guard_name == "fp16-layernorm-tail":
+        _print_fp16_layernorm_tail_report(report, no_color=no_color)
     elif guard_name == "normal-dtype-promotion":
         _print_normal_dtype_promotion_report(report, no_color=no_color)
     elif guard_name == "shuffle-sample-frozen":

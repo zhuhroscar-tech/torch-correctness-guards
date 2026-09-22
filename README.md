@@ -17,6 +17,7 @@ The package replaces the older one-repo-per-guard pattern with one installable C
 | dynamic clamp | `dynamic-clamp` | pytorch/pytorch#194976, nvidia/Megatron-LM#6918 | Reproduces Inductor stale reuse of automatically-dynamic Python float bounds in `torch.clamp` and verifies the `safe_clamp` call-site guard. |
 | embedding_bag frequency scaling | `embeddingbag-freq-scale` | pytorch/pytorch#190061 | Reproduces the MPS backend silently ignoring `scale_grad_by_freq=True` in `embedding_bag` backward and verifies `safe_embedding_bag` matches the CPU-oracle gradient. |
 | expand fill | `expand-fill` | pytorch/pytorch#197448 | Reproduces Inductor writing wrong values for `.fill_(scalar)` on a broadcast view created by `Tensor.expand()` and verifies `safe_fill_` matches eager. |
+| fp16 LayerNorm tail | `fp16-layernorm-tail` | none filed | Reproduces CPU float16 `layer_norm` returning nonzero output for exact-constant rows and verifies `safe_layer_norm` computes through a float32 upcast. |
 | Normal.sample dtype promotion | `normal-dtype-promotion` | pytorch/pytorch#194547 | Reproduces `torch.compile` silently promoting `torch.distributions.Normal.sample()` output dtype when eager preserves the lower-precision `loc` dtype, and verifies the wrapper restores eager's dtype contract. |
 | shuffle/sample frozen RNG | `shuffle-sample-frozen` | pytorch/pytorch#197085 | Reproduces Dynamo baking `random.shuffle()` / `random.sample()` results into a compiled graph as trace-time constants and verifies graph-break wrappers restore eager per-call randomness. |
 | std/var precision | `std-precision` | pytorch/pytorch#197089 | Reproduces `torch.compile(backend="inductor")` accumulating `torch.std`/`torch.var`-family reductions in float32 where CPU eager uses double precision, and verifies float64-upcast guards preserve eager outputs and gradients. |
@@ -48,6 +49,7 @@ torch-guard run dynamo-closure-descriptor
 torch-guard run dynamic-clamp
 torch-guard run embeddingbag-freq-scale
 torch-guard run expand-fill
+torch-guard run fp16-layernorm-tail
 torch-guard run normal-dtype-promotion
 torch-guard run shuffle-sample-frozen
 torch-guard run std-precision
@@ -69,6 +71,7 @@ from torch_correctness_guards import safe_bound_method_call, safe_call, safe_mod
 from torch_correctness_guards import safe_clamp
 from torch_correctness_guards import safe_embedding_bag
 from torch_correctness_guards import safe_fill_
+from torch_correctness_guards import safe_layer_norm
 from torch_correctness_guards import safe_compiled_normal_sample
 from torch_correctness_guards import safe_sample, safe_shuffle
 from torch_correctness_guards import safe_std, safe_var, safe_var_mean, safe_std_mean
@@ -82,6 +85,7 @@ y = safe_call(torch.Tensor.__mul__, a, b)
 w = safe_clamp(x, max=limit)
 emb = safe_embedding_bag(idx, weight, offsets, mode="sum", scale_grad_by_freq=True)
 safe_fill_(x.expand(3, -1), 2.0)
+ln = safe_layer_norm(x, (x.shape[-1],))
 sample = safe_compiled_normal_sample(compiled_fn, eager_fn)(loc, scale)
 safe_shuffle(items)
 subset = safe_sample(population, k)

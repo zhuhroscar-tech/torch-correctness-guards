@@ -55,6 +55,10 @@ from .guards.expand_fill import (  # noqa: F401
     diagnose as diagnose_expand_fill,
     safe_fill_,
 )
+from .guards.fp16_layernorm_tail import (  # noqa: F401
+    diagnose as diagnose_fp16_layernorm_tail,
+    safe_layer_norm,
+)
 from .guards.normal_dtype_promotion import (  # noqa: F401
     diagnose as diagnose_normal_dtype_promotion,
     safe_compiled_normal_sample,
