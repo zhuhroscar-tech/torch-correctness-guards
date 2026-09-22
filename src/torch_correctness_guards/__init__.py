@@ -86,6 +86,14 @@ from .guards.int64_index_truncation import (  # noqa: F401
     make_safe_int64_arange_mul,
     safe_int64_arange_mul,
 )
+from .guards.linalg_nan import (  # noqa: F401
+    diagnose as diagnose_linalg_nan,
+    diagnose_norm_precision,
+    safe_eigvalsh,
+    safe_norm,
+    safe_svdvals,
+    safe_vector_norm,
+)
 from .guards.scatter_copyback_alias import (  # noqa: F401
     diagnose as diagnose_scatter_copyback_alias,
     safe_compiled_scatter_returning,

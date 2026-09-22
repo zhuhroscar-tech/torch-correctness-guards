@@ -71,6 +71,10 @@ _GUARDS = {
         "description": "Inductor truncates int64 arange-multiply expressions to 32-bit-range arithmetic",
         "module": "torch_correctness_guards.guards.int64_index_truncation",
     },
+    "linalg-nan": {
+        "description": "torch.linalg values-only decompositions silently swallow NaN/Inf input",
+        "module": "torch_correctness_guards.guards.linalg_nan",
+    },
     "scatter-copyback-alias": {
         "description": "Inductor return-value aliasing drift for scatter copy-back and no-op elimination rewrites",
         "module": "torch_correctness_guards.guards.scatter_copyback_alias",
@@ -167,6 +171,10 @@ def _load_guard(name: str):
         from .guards import int64_index_truncation
 
         return int64_index_truncation
+    if name == "linalg-nan":
+        from .guards import linalg_nan
+
+        return linalg_nan
     if name == "scatter-copyback-alias":
         from .guards import scatter_copyback_alias
 
@@ -1008,6 +1016,35 @@ def _print_dtype_view_scatter_report(report, *, no_color: bool) -> None:
         )
 
 
+def _print_linalg_nan_report(report, *, no_color: bool) -> None:
+    style = resolve_style(no_color_flag=no_color)
+    print_fields([("torch version", report["torch_version"])])
+
+    if report["any_bug_present"]:
+        print(status_headline(style, "warn", "torch.linalg values-only decomposition silently returned finite output for NaN input on this host"))
+    else:
+        print(status_headline(style, "info", "no silent finite-output NaN swallow reproduced on this host's LAPACK backend"))
+
+    if report["guard_fully_effective"]:
+        print(status_headline(style, "ok", "safe_svdvals() and safe_eigvalsh() reject every non-finite input case"))
+    else:
+        print(status_headline(style, "fail", "guard did NOT reject at least one non-finite input case"))
+
+    section("NaN placement cases")
+    for c in report["cases"]:
+        native_flag = "silent-finite" if c["buggy_result_is_finite"] else ("raised" if c["buggy_raised"] else "propagates-nan")
+        ref_flag = "raised" if c["reference_raised"] else ("ref-has-nan" if c["reference_has_nan"] else "REF-FINITE")
+        guard_flag = "guard-raises" if c["guard_raises"] else "GUARD-MISSED"
+        print_fields(
+            [
+                (
+                    f"{c['op']} n={c['size']} pos={c['nan_position']}",
+                    f"native={native_flag:14s}  reference={ref_flag:11s}  {guard_flag}",
+                )
+            ]
+        )
+
+
 def _print_report(guard_name: str, report, *, no_color: bool) -> None:
     if guard_name == "as-strided-restride-oob":
         _print_as_strided_report(report, no_color=no_color)
@@ -1039,6 +1076,8 @@ def _print_report(guard_name: str, report, *, no_color: bool) -> None:
         _print_inplace_slice_shift_aliasing_report(report, no_color=no_color)
     elif guard_name == "int64-index-truncation":
         _print_int64_index_truncation_report(report, no_color=no_color)
+    elif guard_name == "linalg-nan":
+        _print_linalg_nan_report(report, no_color=no_color)
     elif guard_name == "scatter-copyback-alias":
         _print_scatter_copyback_alias_report(report, no_color=no_color)
     elif guard_name == "softmax-dim":

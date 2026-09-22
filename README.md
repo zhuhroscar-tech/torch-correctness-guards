@@ -24,6 +24,7 @@ The package replaces the older one-repo-per-guard pattern with one installable C
 | full dtype | `full-dtype` | pytorch/pytorch#194062 | Reproduces Inductor dropping `torch.full(..., dtype=...)` casts for symbolic fills, including skipped narrow-integer overflow checks, and verifies `safe_full` restores eager execution. |
 | in-place slice-shift aliasing | `inplace-slice-shift-aliasing` | pytorch/pytorch#197829 | Reproduces Inductor corrupting `x[1:] = x[:-1].clone()` style overlapping row-shift assignments and verifies `safe_slice_shift` restores eager semantics. |
 | int64 index truncation | `int64-index-truncation` | pytorch/pytorch#183901 | Reproduces Inductor truncating int64 `arange`-multiply expressions to 32-bit-range arithmetic before storing an int64 result, then verifies eager graph-break guards restore exact values. |
+| linalg NaN/Inf guards | `linalg-nan` | pytorch/pytorch#187759, numpy/numpy#20280, pytorch/pytorch#169237, pytorch/pytorch#193006 | Reproduces `torch.linalg.svdvals()` / `eigvalsh()` values-only routines silently swallowing non-finite input and verifies safe finite-input guards; also ships precision/overflow-safe L2 norm wrappers. |
 | scatter copy-back aliasing | `scatter-copyback-alias` | pytorch/pytorch#195451, pytorch/pytorch#197893 | Reproduces Inductor changing a compiled function's return-value aliasing contract for scatter copy-back and no-op-elimination rewrites, then verifies `safe_compiled_scatter_returning` restores eager's non-aliasing behavior. |
 | softmax dim attention rewrite | `softmax-dim` | pytorch/pytorch#196468 | Reproduces Inductor rewriting attention-shaped `matmul -> softmax(dim=non-last) -> matmul` graphs as if `dim=-1`, then verifies `safe_softmax_attention` preserves eager semantics. |
 | 2D tiled reduction tail store | `tiled-reduction-tail-store` | pytorch/pytorch#196681 | Reproduces Inductor's CPU 2D-tiled reduction tail-store overrun/corruption in isolated subprocesses and verifies `safe_compiled_reduction` never silently trusts a corrupted result. |
@@ -65,6 +66,7 @@ torch-guard run fp16-layernorm-tail
 torch-guard run full-dtype
 torch-guard run inplace-slice-shift-aliasing
 torch-guard run int64-index-truncation
+torch-guard run linalg-nan
 torch-guard run scatter-copyback-alias
 torch-guard run softmax-dim
 torch-guard run tiled-reduction-tail-store
@@ -97,6 +99,7 @@ from torch_correctness_guards import safe_full
 from torch_correctness_guards import safe_slice_shift
 from torch_correctness_guards import safe_compiled_reduction
 from torch_correctness_guards import safe_int64_arange_mul
+from torch_correctness_guards import safe_svdvals, safe_eigvalsh, safe_vector_norm, safe_norm
 from torch_correctness_guards import safe_compiled_scatter_returning
 from torch_correctness_guards import safe_softmax_attention
 from torch_correctness_guards import safe_compiled_normal_sample
@@ -118,6 +121,7 @@ mask = safe_full((2,), fill_value, dtype=torch.bool)
 safe_slice_shift(x, shift=1, dim=0)
 checked = safe_compiled_reduction(compiled_fn, eager_fn)(x)
 products = safe_int64_arange_mul(0, 9, torch.tensor(1500000000, dtype=torch.int64))
+vals = safe_svdvals(matrix)
 safe_fn = safe_compiled_scatter_returning(compiled_fn)
 attn = safe_softmax_attention(q, k, v, dim=0)
 safe_dup_index_assign(v, idx, 1.0)
