@@ -83,6 +83,10 @@ _GUARDS = {
         "description": "AOTAutograd activation_memory_budget can recompute RNG ops with fresh randomness in backward",
         "module": "torch_correctness_guards.guards.memory_budget_rng",
     },
+    "mps-copy-dtype": {
+        "description": "MPS tensor copies into CPU float64/complex128 destinations silently lose data",
+        "module": "torch_correctness_guards.guards.mps_copy_dtype",
+    },
     "scatter-copyback-alias": {
         "description": "Inductor return-value aliasing drift for scatter copy-back and no-op elimination rewrites",
         "module": "torch_correctness_guards.guards.scatter_copyback_alias",
@@ -191,6 +195,10 @@ def _load_guard(name: str):
         from .guards import memory_budget_rng
 
         return memory_budget_rng
+    if name == "mps-copy-dtype":
+        from .guards import mps_copy_dtype
+
+        return mps_copy_dtype
     if name == "scatter-copyback-alias":
         from .guards import scatter_copyback_alias
 
@@ -1116,6 +1124,46 @@ def _print_memory_budget_rng_report(report, *, no_color: bool) -> None:
         print_fields([(f"requested_budget={c['budget']}", flag)])
 
 
+def _print_mps_copy_dtype_report(report, *, no_color: bool) -> None:
+    style = resolve_style(no_color_flag=no_color)
+    print_fields(
+        [
+            ("torch version", report["torch_version"]),
+            ("mps functional on this host", "yes" if report["mps_functional"] else "no (see notes below)"),
+            ("tracking issue", report["issue_url"]),
+        ]
+    )
+
+    if report["any_native_silently_wrong"]:
+        print(status_headline(style, "fail", "MPS-to-CPU float64/complex128 silent copy bug reproduced on this host"))
+    else:
+        print(status_headline(style, "info", "no silent copy bug reproduced on this host's exercised devices"))
+
+    if report["guard_fully_correct"]:
+        print(status_headline(style, "ok", "safe_to()/safe_copy_() match the CPU-oracle conversion on every exercised device"))
+    else:
+        print(status_headline(style, "fail", "guard did NOT match the expected contract on at least one device"))
+
+    section("per-dtype results (native .to()/.copy_() vs guarded vs CPU oracle)")
+    for c in report["cases"]:
+        if not c["ran"]:
+            print_fields([(c["dtype_name"], f"skipped: {c['skip_reason']}")])
+            continue
+        to_flag = "SILENT-WRONG" if c["native_to_matches_oracle"] is False else "ok"
+        copy_flag = "SILENT-WRONG" if c["native_copy_matches_oracle"] is False else "ok"
+        guard_to_flag = "guard-ok" if c["guard_to_matches_oracle"] else "GUARD-FAILED"
+        guard_copy_flag = "guard-ok" if c["guard_copy_matches_oracle"] else "GUARD-FAILED"
+        print_fields(
+            [
+                (
+                    c["dtype_name"],
+                    f"native.to={to_flag:12s}  native.copy_={copy_flag:12s}  "
+                    f"guard.to={guard_to_flag:12s}  guard.copy_={guard_copy_flag:12s}",
+                )
+            ]
+        )
+
+
 def _print_report(guard_name: str, report, *, no_color: bool) -> None:
     if guard_name == "as-strided-restride-oob":
         _print_as_strided_report(report, no_color=no_color)
@@ -1153,6 +1201,8 @@ def _print_report(guard_name: str, report, *, no_color: bool) -> None:
         _print_linalg_pinv_complex_grad_report(report, no_color=no_color)
     elif guard_name == "memory-budget-rng":
         _print_memory_budget_rng_report(report, no_color=no_color)
+    elif guard_name == "mps-copy-dtype":
+        _print_mps_copy_dtype_report(report, no_color=no_color)
     elif guard_name == "scatter-copyback-alias":
         _print_scatter_copyback_alias_report(report, no_color=no_color)
     elif guard_name == "softmax-dim":

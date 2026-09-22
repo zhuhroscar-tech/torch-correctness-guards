@@ -22,6 +22,7 @@ from torch_correctness_guards.guards import (
     int64_index_truncation,
     linalg_pinv_complex_grad,
     memory_budget_rng,
+    mps_copy_dtype,
     normal_dtype_promotion,
     shuffle_sample_frozen,
     softmax_dim,
@@ -95,6 +96,8 @@ def test_list_includes_migrated_guard(capsys):
     assert "complex torch.linalg.pinv gradients" in out
     assert "memory-budget-rng" in out
     assert "activation_memory_budget" in out
+    assert "mps-copy-dtype" in out
+    assert "MPS tensor copies" in out
     assert "normal-dtype-promotion" in out
     assert "Normal.sample" in out
     assert "shuffle-sample-frozen" in out
@@ -215,6 +218,66 @@ def test_run_memory_budget_rng_text_reports_guard_status(monkeypatch, capsys):
     assert "activation_memory_budget RNG-recompute gradient bug reproduced" in out
     assert "safe_compile() prevents the divergence" in out
     assert "WRONG-GRADIENT" in out
+
+
+def _fake_mps_copy_dtype_report(**overrides):
+    report = {
+        "torch_version": "9.9.9-fake",
+        "issue_url": "https://github.com/pytorch/pytorch/issues/197715",
+        "mps_functional": True,
+        "cases": [
+            {
+                "dtype_name": "float64",
+                "ran": True,
+                "skip_reason": None,
+                "native_to_row": [0.0],
+                "guard_to_row": [1.0],
+                "native_copy_row": [9.0],
+                "guard_copy_row": [1.0],
+                "oracle_row": [1.0],
+                "native_to_matches_oracle": False,
+                "guard_to_matches_oracle": True,
+                "native_copy_matches_oracle": False,
+                "guard_copy_matches_oracle": True,
+            },
+            {
+                "dtype_name": "complex128",
+                "ran": False,
+                "skip_reason": "MPS not available on this host",
+                "native_to_row": None,
+                "guard_to_row": None,
+                "native_copy_row": None,
+                "guard_copy_row": None,
+                "oracle_row": None,
+                "native_to_matches_oracle": None,
+                "guard_to_matches_oracle": None,
+                "native_copy_matches_oracle": None,
+                "guard_copy_matches_oracle": None,
+            },
+        ],
+        "any_native_silently_wrong": True,
+        "guard_fully_correct": True,
+    }
+    report.update(overrides)
+    return report
+
+
+def test_run_mps_copy_dtype_json_includes_guard_name(monkeypatch, capsys):
+    monkeypatch.setattr(mps_copy_dtype, "diagnose", lambda: _fake_mps_copy_dtype_report())
+    assert main(["run", "mps-copy-dtype", "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["guard"] == "mps-copy-dtype"
+    assert payload["guard_fully_correct"] is True
+
+
+def test_run_mps_copy_dtype_text_reports_guard_status(monkeypatch, capsys):
+    monkeypatch.setattr(mps_copy_dtype, "diagnose", lambda: _fake_mps_copy_dtype_report())
+    assert main(["run", "mps-copy-dtype", "--no-color"]) == 0
+    out = capsys.readouterr().out
+    assert "MPS-to-CPU float64/complex128 silent copy bug reproduced" in out
+    assert "safe_to()/safe_copy_() match the CPU-oracle" in out
+    assert "SILENT-WRONG" in out
+    assert "skipped: MPS not available on this host" in out
 
 
 def test_torch_unavailable_sets_exit_2(monkeypatch, capsys):

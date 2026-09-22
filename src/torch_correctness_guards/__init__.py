@@ -102,6 +102,11 @@ from .guards.memory_budget_rng import (  # noqa: F401
     diagnose as diagnose_memory_budget_rng,
     safe_compile,
 )
+from .guards.mps_copy_dtype import (  # noqa: F401
+    diagnose as diagnose_mps_copy_dtype,
+    safe_copy_,
+    safe_to,
+)
 from .guards.scatter_copyback_alias import (  # noqa: F401
     diagnose as diagnose_scatter_copyback_alias,
     safe_compiled_scatter_returning,
