@@ -35,6 +35,10 @@ _GUARDS = {
         "description": "Inductor dtype-view custom-op diagonal_scatter returns NaN values and aliases inputs",
         "module": "torch_correctness_guards.guards.dtype_view_scatter",
     },
+    "duplicate-index-writeorder": {
+        "description": "Inductor computed duplicate-index read-modify-write assignment write-order divergence",
+        "module": "torch_correctness_guards.guards.duplicate_index_writeorder",
+    },
     "dynamic-clamp": {
         "description": "Inductor stale automatically-dynamic Python float reused in torch.clamp bounds",
         "module": "torch_correctness_guards.guards.dynamic_clamp",
@@ -103,6 +107,10 @@ def _load_guard(name: str):
         from .guards import dtype_view_scatter
 
         return dtype_view_scatter
+    if name == "duplicate-index-writeorder":
+        from .guards import duplicate_index_writeorder
+
+        return duplicate_index_writeorder
     if name == "dynamic-clamp":
         from .guards import dynamic_clamp
 
@@ -239,6 +247,39 @@ def _print_checkpoint_noise_report(report, *, no_color: bool) -> None:
             ("guard has NaN", f"{c['guard_has_nan']!s}"),
         ]
     )
+
+
+def _print_duplicate_index_writeorder_report(report, *, no_color: bool) -> None:
+    style = resolve_style(no_color_flag=no_color)
+    print_fields([("torch version", report["torch_version"]), ("tracking issue", report["issue_url"])])
+
+    if report["bug_reproduced"]:
+        print(status_headline(style, "fail", "computed duplicate-index write-order miscompilation reproduced on this host"))
+    else:
+        print(status_headline(style, "info", "no computed duplicate-index write-order miscompilation reproduced on this host's installed torch build"))
+
+    if report["isolation_confirmed"]:
+        print(status_headline(style, "ok", "literal duplicate-index control case is unaffected"))
+    else:
+        print(status_headline(style, "warn", "literal duplicate-index control case also diverged"))
+
+    if report["guard_fully_correct"]:
+        print(status_headline(style, "ok", "safe_dup_index_assign() restores eager write-order semantics"))
+    else:
+        print(status_headline(style, "fail", "safe_dup_index_assign() did NOT restore eager semantics"))
+
+    section("cases (kind -> eager vs native vs guarded)")
+    for c in report["cases"]:
+        native_flag = "DIVERGED" if not c["native_matches_eager"] else "ok"
+        guard_flag = "guard-ok" if c["guard_matches_eager"] else "GUARD-FAILED"
+        print_fields(
+            [
+                (
+                    c["kind"],
+                    f"native={native_flag:9s}  guard_matches_eager={str(c['guard_matches_eager']):5s}  {guard_flag}",
+                )
+            ]
+        )
 
 
 def _print_dynamic_clamp_report(report, *, no_color: bool) -> None:
@@ -694,6 +735,8 @@ def _print_report(guard_name: str, report, *, no_color: bool) -> None:
         _print_dynamo_closure_descriptor_report(report, no_color=no_color)
     elif guard_name == "dtype-view-scatter":
         _print_dtype_view_scatter_report(report, no_color=no_color)
+    elif guard_name == "duplicate-index-writeorder":
+        _print_duplicate_index_writeorder_report(report, no_color=no_color)
     elif guard_name == "dynamic-clamp":
         _print_dynamic_clamp_report(report, no_color=no_color)
     elif guard_name == "embeddingbag-freq-scale":

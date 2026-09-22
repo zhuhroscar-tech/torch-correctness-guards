@@ -45,6 +45,11 @@ from .guards.dtype_view_scatter import (  # noqa: F401
     diagnose as diagnose_dtype_view_scatter,
     safe_compiled_dtype_view_diagonal_scatter,
 )
+from .guards.duplicate_index_writeorder import (  # noqa: F401
+    diagnose as diagnose_duplicate_index_writeorder,
+    make_safe_dup_index_assign,
+    safe_dup_index_assign,
+)
 from .guards.dynamic_clamp import (  # noqa: F401
     diagnose as diagnose_dynamic_clamp,
     safe_clamp,

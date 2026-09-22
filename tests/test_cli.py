@@ -13,6 +13,7 @@ from torch_correctness_guards.guards import (
     cpu_backward_nan_tail,
     dynamo_closure_descriptor,
     dtype_view_scatter,
+    duplicate_index_writeorder,
     dynamic_clamp,
     expand_fill,
     normal_dtype_promotion,
@@ -69,6 +70,8 @@ def test_list_includes_migrated_guard(capsys):
     assert "closure-captured Tensor descriptors" in out
     assert "dtype-view-scatter" in out
     assert "diagonal_scatter" in out
+    assert "duplicate-index-writeorder" in out
+    assert "duplicate-index" in out
     assert "dynamic-clamp" in out
     assert "torch.clamp" in out
     assert "expand-fill" in out
@@ -165,6 +168,47 @@ def test_run_as_strided_text_reports_guard_status(monkeypatch, capsys):
     assert "as_strided restride divergence reproduced" in out
     assert "safe_as_strided() matches eager" in out
     assert "RuntimeError: setStorage out of bounds" in out
+
+
+def _fake_duplicate_index_writeorder_report(**overrides):
+    report = {
+        "torch_version": "9.9.9-fake",
+        "issue_url": "https://github.com/pytorch/pytorch/issues/197582",
+        "cases": [
+            {
+                "kind": "computed_duplicate_index",
+                "description": "fake case",
+                "eager_result": [2.0, 3.0, 3.0, 4.0],
+                "native_compiled_result": [3.0, 4.0, 3.0, 4.0],
+                "guarded_compiled_result": [2.0, 3.0, 3.0, 4.0],
+                "native_matches_eager": False,
+                "guard_matches_eager": True,
+                "guard_correct": True,
+            }
+        ],
+        "bug_reproduced": True,
+        "isolation_confirmed": True,
+        "guard_fully_correct": True,
+    }
+    report.update(overrides)
+    return report
+
+
+def test_run_duplicate_index_writeorder_json_includes_guard_name(monkeypatch, capsys):
+    monkeypatch.setattr(duplicate_index_writeorder, "diagnose", lambda: _fake_duplicate_index_writeorder_report())
+    assert main(["run", "duplicate-index-writeorder", "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["guard"] == "duplicate-index-writeorder"
+    assert payload["guard_fully_correct"] is True
+
+
+def test_run_duplicate_index_writeorder_text_reports_guard_status(monkeypatch, capsys):
+    monkeypatch.setattr(duplicate_index_writeorder, "diagnose", lambda: _fake_duplicate_index_writeorder_report())
+    assert main(["run", "duplicate-index-writeorder", "--no-color"]) == 0
+    out = capsys.readouterr().out
+    assert "computed duplicate-index write-order miscompilation reproduced" in out
+    assert "safe_dup_index_assign() restores eager write-order semantics" in out
+    assert "computed_duplicate_index" in out
 
 
 def _fake_checkpoint_noise_report(**overrides):
