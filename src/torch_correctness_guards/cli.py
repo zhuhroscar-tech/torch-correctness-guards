@@ -67,6 +67,10 @@ _GUARDS = {
         "description": "Inductor in-place slice-shift assignment corrupts overlapping source/target storage",
         "module": "torch_correctness_guards.guards.inplace_slice_shift_aliasing",
     },
+    "int64-index-truncation": {
+        "description": "Inductor truncates int64 arange-multiply expressions to 32-bit-range arithmetic",
+        "module": "torch_correctness_guards.guards.int64_index_truncation",
+    },
     "tiled-reduction-tail-store": {
         "description": "Inductor CPU 2D-tiled reduction tail store can overrun or corrupt outputs",
         "module": "torch_correctness_guards.guards.tiled_reduction_tail_store",
@@ -151,6 +155,10 @@ def _load_guard(name: str):
         from .guards import inplace_slice_shift_aliasing
 
         return inplace_slice_shift_aliasing
+    if name == "int64-index-truncation":
+        from .guards import int64_index_truncation
+
+        return int64_index_truncation
     if name == "tiled-reduction-tail-store":
         from .guards import tiled_reduction_tail_store
 
@@ -575,6 +583,34 @@ def _print_inplace_slice_shift_aliasing_report(report, *, no_color: bool) -> Non
         )
 
 
+def _print_int64_index_truncation_report(report, *, no_color: bool) -> None:
+    style = resolve_style(no_color_flag=no_color)
+    print_fields([("torch version", report["torch_version"]), ("tracking issue", report["issue_url"])])
+
+    if report["any_native_diverges"]:
+        print(status_headline(style, "fail", "Inductor int64 arange-multiply truncation reproduced on this host"))
+    else:
+        print(status_headline(style, "info", "no int64 arange-multiply truncation reproduced on this host's installed torch build"))
+
+    if report["guard_fully_correct"]:
+        print(status_headline(style, "ok", "safe_int64_arange_mul() matches eager on every case"))
+    else:
+        print(status_headline(style, "fail", "safe_int64_arange_mul() did NOT match eager on at least one case"))
+
+    section("cases (range/multiplier -> native vs guard)")
+    for c in report["cases"]:
+        native_flag = "SILENT-WRONG" if c["native_diverges"] else "ok"
+        guard_flag = "guard-ok" if c["guard_matches_eager"] else "GUARD-FAILED"
+        print_fields(
+            [
+                (
+                    c["description"][:60],
+                    f"native={native_flag:12s}  {guard_flag}",
+                )
+            ]
+        )
+
+
 def _print_compile_validation_report(report, *, no_color: bool) -> None:
     style = resolve_style(no_color_flag=no_color)
     print_fields([("torch version", report["torch_version"])])
@@ -910,6 +946,8 @@ def _print_report(guard_name: str, report, *, no_color: bool) -> None:
         _print_full_dtype_report(report, no_color=no_color)
     elif guard_name == "inplace-slice-shift-aliasing":
         _print_inplace_slice_shift_aliasing_report(report, no_color=no_color)
+    elif guard_name == "int64-index-truncation":
+        _print_int64_index_truncation_report(report, no_color=no_color)
     elif guard_name == "normal-dtype-promotion":
         _print_normal_dtype_promotion_report(report, no_color=no_color)
     elif guard_name == "shuffle-sample-frozen":

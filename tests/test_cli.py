@@ -19,6 +19,7 @@ from torch_correctness_guards.guards import (
     expand_fill,
     full_dtype,
     inplace_slice_shift_aliasing,
+    int64_index_truncation,
     normal_dtype_promotion,
     shuffle_sample_frozen,
     std_precision,
@@ -85,6 +86,8 @@ def test_list_includes_migrated_guard(capsys):
     assert "torch.full" in out
     assert "inplace-slice-shift-aliasing" in out
     assert "slice-shift" in out
+    assert "int64-index-truncation" in out
+    assert "int64 arange-multiply" in out
     assert "normal-dtype-promotion" in out
     assert "Normal.sample" in out
     assert "shuffle-sample-frozen" in out
@@ -668,6 +671,46 @@ def test_run_inplace_slice_shift_aliasing_text_reports_guard_status(monkeypatch,
     assert "in-place slice-shift aliasing bug reproduced" in out
     assert "safe_slice_shift() restores eager" in out
     assert "WRONG (256/768)" in out
+
+
+def _fake_int64_index_truncation_report(**overrides):
+    report = {
+        "torch_version": "9.9.9-fake",
+        "issue_url": "https://github.com/pytorch/pytorch/issues/183901",
+        "cases": [
+            {
+                "description": "fake overflowing arange-multiply case",
+                "multiplier": 1500000000,
+                "arange_end": 9,
+                "eager_result": [0, 1500000000, 3000000000],
+                "native_compiled_result": [0, 1500000000, -1294967296],
+                "guarded_compiled_result": [0, 1500000000, 3000000000],
+                "native_diverges": True,
+                "guard_matches_eager": True,
+            }
+        ],
+        "any_native_diverges": True,
+        "guard_fully_correct": True,
+    }
+    report.update(overrides)
+    return report
+
+
+def test_run_int64_index_truncation_json_includes_guard_name(monkeypatch, capsys):
+    monkeypatch.setattr(int64_index_truncation, "diagnose", lambda: _fake_int64_index_truncation_report())
+    assert main(["run", "int64-index-truncation", "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["guard"] == "int64-index-truncation"
+    assert payload["guard_fully_correct"] is True
+
+
+def test_run_int64_index_truncation_text_reports_guard_status(monkeypatch, capsys):
+    monkeypatch.setattr(int64_index_truncation, "diagnose", lambda: _fake_int64_index_truncation_report())
+    assert main(["run", "int64-index-truncation", "--no-color"]) == 0
+    out = capsys.readouterr().out
+    assert "int64 arange-multiply truncation reproduced" in out
+    assert "safe_int64_arange_mul() matches eager" in out
+    assert "SILENT-WRONG" in out
 
 
 def _fake_normal_dtype_promotion_report(**overrides):

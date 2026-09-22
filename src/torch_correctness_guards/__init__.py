@@ -80,6 +80,12 @@ from .guards.inplace_slice_shift_aliasing import (  # noqa: F401
     diagnose as diagnose_inplace_slice_shift_aliasing,
     safe_slice_shift,
 )
+from .guards.int64_index_truncation import (  # noqa: F401
+    diagnose as diagnose_int64_index_truncation,
+    guard_int64_op,
+    make_safe_int64_arange_mul,
+    safe_int64_arange_mul,
+)
 from .guards.normal_dtype_promotion import (  # noqa: F401
     diagnose as diagnose_normal_dtype_promotion,
     safe_compiled_normal_sample,
