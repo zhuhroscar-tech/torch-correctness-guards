@@ -51,6 +51,10 @@ from .guards.embeddingbag_freq_scale import (  # noqa: F401
     mps_is_functional,
     safe_embedding_bag,
 )
+from .guards.expand_fill import (  # noqa: F401
+    diagnose as diagnose_expand_fill,
+    safe_fill_,
+)
 from .guards.normal_dtype_promotion import (  # noqa: F401
     diagnose as diagnose_normal_dtype_promotion,
     safe_compiled_normal_sample,

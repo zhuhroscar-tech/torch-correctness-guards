@@ -39,6 +39,10 @@ _GUARDS = {
         "description": "MPS embedding_bag silently ignores scale_grad_by_freq=True in backward",
         "module": "torch_correctness_guards.guards.embeddingbag_freq_scale",
     },
+    "expand-fill": {
+        "description": "Inductor wrong values for fill_ on broadcast views created by Tensor.expand()",
+        "module": "torch_correctness_guards.guards.expand_fill",
+    },
     "normal-dtype-promotion": {
         "description": "torch.compile Normal.sample() silently promotes dtype away from eager loc dtype",
         "module": "torch_correctness_guards.guards.normal_dtype_promotion",
@@ -91,6 +95,10 @@ def _load_guard(name: str):
         from .guards import embeddingbag_freq_scale
 
         return embeddingbag_freq_scale
+    if name == "expand-fill":
+        from .guards import expand_fill
+
+        return expand_fill
     if name == "normal-dtype-promotion":
         from .guards import normal_dtype_promotion
 
@@ -265,6 +273,35 @@ def _print_embeddingbag_freq_scale_report(report, *, no_color: bool) -> None:
                     c["device"],
                     f"native={c['native_grad_row1']} oracle={c['cpu_oracle_grad_row1']} "
                     f"guard={c['guard_grad_row1']} native={native_flag} {guard_flag}",
+                )
+            ]
+        )
+
+
+def _print_expand_fill_report(report, *, no_color: bool) -> None:
+    style = resolve_style(no_color_flag=no_color)
+    print_fields([("torch version", report["torch_version"])])
+
+    if report["any_expand_fill_divergence"]:
+        print(status_headline(style, "fail", "torch.compile(inductor) expand()+fill_() divergence reproduced on this host"))
+    else:
+        print(status_headline(style, "info", "no expand()+fill_() divergence reproduced on this host's installed torch build"))
+
+    if report["guard_fully_correct"]:
+        print(status_headline(style, "ok", "safe_fill_() matches eager on every case, including under torch.compile"))
+    else:
+        print(status_headline(style, "fail", "guard did NOT match eager on at least one case"))
+
+    section("expand()+fill_() cases (expand_rows, base -> eager vs compiled(native) vs compiled(guarded))")
+    for c in report["cases"]:
+        flag = "DIVERGES" if c["native_diverges"] else "ok"
+        guard_flag = "guard-ok" if c["guard_matches_eager"] else "GUARD-FAILED"
+        print_fields(
+            [
+                (
+                    f"rows={c['expand_rows']} base={c['base_values']} fill={c['fill_value']}",
+                    f"eager={c['eager_result']}  compiled_native={c['compiled_native_result']}  "
+                    f"compiled_guarded={c['compiled_guarded_result']}  {flag:9s}  {guard_flag}",
                 )
             ]
         )
@@ -519,6 +556,8 @@ def _print_report(guard_name: str, report, *, no_color: bool) -> None:
         _print_dynamic_clamp_report(report, no_color=no_color)
     elif guard_name == "embeddingbag-freq-scale":
         _print_embeddingbag_freq_scale_report(report, no_color=no_color)
+    elif guard_name == "expand-fill":
+        _print_expand_fill_report(report, no_color=no_color)
     elif guard_name == "normal-dtype-promotion":
         _print_normal_dtype_promotion_report(report, no_color=no_color)
     elif guard_name == "shuffle-sample-frozen":

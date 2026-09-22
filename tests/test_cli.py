@@ -13,6 +13,7 @@ from torch_correctness_guards.guards import (
     cpu_backward_nan_tail,
     dynamo_closure_descriptor,
     dynamic_clamp,
+    expand_fill,
     normal_dtype_promotion,
     shuffle_sample_frozen,
     std_precision,
@@ -66,6 +67,8 @@ def test_list_includes_migrated_guard(capsys):
     assert "closure-captured Tensor descriptors" in out
     assert "dynamic-clamp" in out
     assert "torch.clamp" in out
+    assert "expand-fill" in out
+    assert "Tensor.expand" in out
     assert "normal-dtype-promotion" in out
     assert "Normal.sample" in out
     assert "shuffle-sample-frozen" in out
@@ -384,6 +387,46 @@ def test_run_dynamo_closure_descriptor_text_reports_guard_status(monkeypatch, ca
     assert "closure-descriptor graph-reuse divergence reproduced" in out
     assert "safe_call() matches eager" in out
     assert "STALE-REUSE" in out
+
+
+def _fake_expand_fill_report(**overrides):
+    report = {
+        "torch_version": "9.9.9-fake",
+        "issue_urls": ["https://github.com/pytorch/pytorch/issues/197448"],
+        "cases": [
+            {
+                "expand_rows": 3,
+                "base_values": [1.0, 2.0],
+                "fill_value": 0.0,
+                "eager_result": [0.0, 0.0],
+                "compiled_native_result": [9.0, 9.0],
+                "compiled_guarded_result": [0.0, 0.0],
+                "native_diverges": True,
+                "guard_matches_eager": True,
+            }
+        ],
+        "any_expand_fill_divergence": True,
+        "guard_fully_correct": True,
+    }
+    report.update(overrides)
+    return report
+
+
+def test_run_expand_fill_json_includes_guard_name(monkeypatch, capsys):
+    monkeypatch.setattr(expand_fill, "diagnose", lambda: _fake_expand_fill_report())
+    assert main(["run", "expand-fill", "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["guard"] == "expand-fill"
+    assert payload["guard_fully_correct"] is True
+
+
+def test_run_expand_fill_text_reports_guard_status(monkeypatch, capsys):
+    monkeypatch.setattr(expand_fill, "diagnose", lambda: _fake_expand_fill_report())
+    assert main(["run", "expand-fill", "--no-color"]) == 0
+    out = capsys.readouterr().out
+    assert "expand()+fill_() divergence reproduced" in out
+    assert "safe_fill_() matches eager" in out
+    assert "DIVERGES" in out
 
 
 def _fake_normal_dtype_promotion_report(**overrides):
