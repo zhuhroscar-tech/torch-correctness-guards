@@ -19,6 +19,10 @@ _GUARDS = {
         "description": "F.rrelu mutable noise buffer captured before fill under checkpoint/saved_tensors_hooks",
         "module": "torch_correctness_guards.guards.checkpoint_noise",
     },
+    "compile-validation": {
+        "description": "torch.compile skips eager input validation for several out-of-domain operator calls",
+        "module": "torch_correctness_guards.guards.compile_validation",
+    },
     "dynamic-clamp": {
         "description": "Inductor stale automatically-dynamic Python float reused in torch.clamp bounds",
         "module": "torch_correctness_guards.guards.dynamic_clamp",
@@ -55,6 +59,10 @@ def _load_guard(name: str):
         from .guards import checkpoint_noise
 
         return checkpoint_noise
+    if name == "compile-validation":
+        from .guards import compile_validation
+
+        return compile_validation
     if name == "dynamic-clamp":
         from .guards import dynamic_clamp
 
@@ -206,6 +214,45 @@ def _print_dynamic_clamp_report(report, *, no_color: bool) -> None:
         )
 
 
+def _print_compile_validation_report(report, *, no_color: bool) -> None:
+    style = resolve_style(no_color_flag=no_color)
+    print_fields([("torch version", report["torch_version"])])
+
+    if report["any_validation_bypassed"]:
+        print(status_headline(style, "fail", "torch.compile input-validation bypass reproduced on this host"))
+    else:
+        print(status_headline(style, "info", "no input-validation bypass reproduced on this host's installed torch build"))
+
+    if report["guard_fully_correct"]:
+        print(status_headline(style, "ok", "guard wrappers restore eager's validation contract on every case"))
+    else:
+        print(status_headline(style, "fail", "at least one guard wrapper did NOT restore eager's validation contract"))
+
+    if report["boundary_cases_not_spuriously_flagged"]:
+        print(status_headline(style, "ok", "valid boundary inputs are never spuriously flagged"))
+    else:
+        print(status_headline(style, "fail", "at least one VALID boundary input was incorrectly flagged"))
+
+    section("cases (fixture -> eager vs compiled(native) vs guarded)")
+    for c in report["cases"]:
+        if c["is_boundary_case"]:
+            flag = "boundary-ok" if not c["guarded_raised"] else "BOUNDARY-FAILED"
+        else:
+            flag = "BYPASSED" if c["validation_bypassed"] else "ok"
+        guard_flag = "guard-ok" if c["guard_restores_validation"] else "GUARD-FAILED"
+        print_fields(
+            [
+                (
+                    c["name"],
+                    f"eager_raised={c['eager_raised']!s:5s}  "
+                    f"compiled_raised={c['compiled_raised']!s:5s}  "
+                    f"guarded_raised={c['guarded_raised']!s:5s}  "
+                    f"{flag:15s}  {guard_flag}",
+                )
+            ]
+        )
+
+
 def _print_normal_dtype_promotion_report(report, *, no_color: bool) -> None:
     style = resolve_style(no_color_flag=no_color)
     print_fields([("torch version", report["torch_version"])])
@@ -343,6 +390,8 @@ def _print_report(guard_name: str, report, *, no_color: bool) -> None:
         _print_as_strided_report(report, no_color=no_color)
     elif guard_name == "checkpoint-noise":
         _print_checkpoint_noise_report(report, no_color=no_color)
+    elif guard_name == "compile-validation":
+        _print_compile_validation_report(report, no_color=no_color)
     elif guard_name == "dynamic-clamp":
         _print_dynamic_clamp_report(report, no_color=no_color)
     elif guard_name == "normal-dtype-promotion":

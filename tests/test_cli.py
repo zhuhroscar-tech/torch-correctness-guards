@@ -9,6 +9,7 @@ from torch_correctness_guards.guards import (
     addcdiv_stale_scalar,
     as_strided_restride_oob,
     checkpoint_noise,
+    compile_validation,
     dynamic_clamp,
     normal_dtype_promotion,
     shuffle_sample_frozen,
@@ -55,6 +56,8 @@ def test_list_includes_migrated_guard(capsys):
     assert "as_strided" in out
     assert "checkpoint-noise" in out
     assert "F.rrelu" in out
+    assert "compile-validation" in out
+    assert "input validation" in out
     assert "dynamic-clamp" in out
     assert "torch.clamp" in out
     assert "normal-dtype-promotion" in out
@@ -236,6 +239,64 @@ def test_run_dynamic_clamp_text_reports_guard_status(monkeypatch, capsys):
     assert "stale dynamic-float clamp reuse reproduced" in out
     assert "safe_clamp() matches eager" in out
     assert "STALE-REUSE" in out
+
+
+def _fake_compile_validation_case(name, is_boundary, bypassed, guard_ok):
+    if is_boundary:
+        eager_raised = False
+        compiled_raised = False
+        guarded_raised = False if guard_ok else True
+    else:
+        eager_raised = True
+        compiled_raised = not bypassed
+        guarded_raised = eager_raised if guard_ok else compiled_raised
+    return {
+        "name": name,
+        "issue_url": "https://github.com/pytorch/pytorch/issues/185246",
+        "is_boundary_case": is_boundary,
+        "eager_raised": eager_raised,
+        "eager_error": "RuntimeError: fake" if eager_raised else None,
+        "compiled_raised": compiled_raised,
+        "compiled_error": "RuntimeError: fake" if compiled_raised else None,
+        "guarded_raised": guarded_raised,
+        "guarded_error": "RuntimeError: fake" if guarded_raised else None,
+        "validation_bypassed": bypassed,
+        "guard_restores_validation": guarded_raised == eager_raised,
+    }
+
+
+def _fake_compile_validation_report(**overrides):
+    cases = [
+        _fake_compile_validation_case("fake_invalid", False, True, True),
+        _fake_compile_validation_case("fake_boundary", True, False, True),
+    ]
+    report = {
+        "torch_version": "9.9.9-fake",
+        "issue_urls": ["https://github.com/pytorch/pytorch/issues/185246"],
+        "cases": cases,
+        "any_validation_bypassed": True,
+        "guard_fully_correct": True,
+        "boundary_cases_not_spuriously_flagged": True,
+    }
+    report.update(overrides)
+    return report
+
+
+def test_run_compile_validation_json_includes_guard_name(monkeypatch, capsys):
+    monkeypatch.setattr(compile_validation, "diagnose", lambda: _fake_compile_validation_report())
+    assert main(["run", "compile-validation", "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["guard"] == "compile-validation"
+    assert payload["guard_fully_correct"] is True
+
+
+def test_run_compile_validation_text_reports_guard_status(monkeypatch, capsys):
+    monkeypatch.setattr(compile_validation, "diagnose", lambda: _fake_compile_validation_report())
+    assert main(["run", "compile-validation", "--no-color"]) == 0
+    out = capsys.readouterr().out
+    assert "input-validation bypass reproduced" in out
+    assert "guard wrappers restore eager" in out
+    assert "BYPASSED" in out
 
 
 def _fake_normal_dtype_promotion_report(**overrides):

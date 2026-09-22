@@ -16,6 +16,14 @@ from .guards.checkpoint_noise import (  # noqa: F401
     diagnose as diagnose_checkpoint_noise,
     safe_rrelu,
 )
+from .guards.compile_validation import (  # noqa: F401
+    diagnose as diagnose_compile_validation,
+    safe_compiled_bernoulli,
+    safe_compiled_binary_cross_entropy,
+    safe_compiled_categorical_sample,
+    safe_compiled_normal,
+    safe_compiled_upsample_bilinear2d,
+)
 from .guards.dynamic_clamp import (  # noqa: F401
     diagnose as diagnose_dynamic_clamp,
     safe_clamp,
