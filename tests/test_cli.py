@@ -20,6 +20,7 @@ from torch_correctness_guards.guards import (
     full_dtype,
     inplace_slice_shift_aliasing,
     int64_index_truncation,
+    linalg_pinv_complex_grad,
     normal_dtype_promotion,
     shuffle_sample_frozen,
     softmax_dim,
@@ -89,6 +90,8 @@ def test_list_includes_migrated_guard(capsys):
     assert "slice-shift" in out
     assert "int64-index-truncation" in out
     assert "int64 arange-multiply" in out
+    assert "linalg-pinv-complex-grad" in out
+    assert "complex torch.linalg.pinv gradients" in out
     assert "normal-dtype-promotion" in out
     assert "Normal.sample" in out
     assert "shuffle-sample-frozen" in out
@@ -124,6 +127,47 @@ def test_guard_failure_sets_exit_1(monkeypatch, capsys):
     monkeypatch.setattr(addcdiv_stale_scalar, "diagnose", lambda: _fake_report(guard_fully_correct=False))
     assert main(["run", "addcdiv-stale-scalar", "--json"]) == 1
     assert json.loads(capsys.readouterr().out)["guard_fully_correct"] is False
+
+
+def _fake_linalg_pinv_complex_grad_report(**overrides):
+    report = {
+        "torch_version": "9.9.9-fake",
+        "issue_url": "https://github.com/pytorch/pytorch/issues/197084",
+        "cases": [
+            {
+                "shape": (4, 3),
+                "seed": 0,
+                "eager_matches_dynamo_only": True,
+                "aot_eager_diverges": True,
+                "inductor_diverges": True,
+                "guarded_matches_eager": True,
+                "max_abs_diff_aot_eager": 5.5,
+                "max_abs_diff_inductor": 5.5,
+                "max_abs_diff_guarded": 1e-6,
+            }
+        ],
+        "any_native_bug": True,
+        "guard_fully_correct": True,
+    }
+    report.update(overrides)
+    return report
+
+
+def test_run_linalg_pinv_complex_grad_json_includes_guard_name(monkeypatch, capsys):
+    monkeypatch.setattr(linalg_pinv_complex_grad, "diagnose", lambda: _fake_linalg_pinv_complex_grad_report())
+    assert main(["run", "linalg-pinv-complex-grad", "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["guard"] == "linalg-pinv-complex-grad"
+    assert payload["guard_fully_correct"] is True
+
+
+def test_run_linalg_pinv_complex_grad_text_reports_guard_status(monkeypatch, capsys):
+    monkeypatch.setattr(linalg_pinv_complex_grad, "diagnose", lambda: _fake_linalg_pinv_complex_grad_report())
+    assert main(["run", "linalg-pinv-complex-grad", "--no-color"]) == 0
+    out = capsys.readouterr().out
+    assert "complex pinv/matrix_sqrth wrong-gradient bug reproduced" in out
+    assert "safe_complex_pinv_grad() restores eager's correct gradient" in out
+    assert "aot_eager_diff=" in out
 
 
 def test_torch_unavailable_sets_exit_2(monkeypatch, capsys):

@@ -75,6 +75,10 @@ _GUARDS = {
         "description": "torch.linalg values-only decompositions silently swallow NaN/Inf input",
         "module": "torch_correctness_guards.guards.linalg_nan",
     },
+    "linalg-pinv-complex-grad": {
+        "description": "AOTAutograd computes wrong complex torch.linalg.pinv gradients under torch.compile",
+        "module": "torch_correctness_guards.guards.linalg_pinv_complex_grad",
+    },
     "scatter-copyback-alias": {
         "description": "Inductor return-value aliasing drift for scatter copy-back and no-op elimination rewrites",
         "module": "torch_correctness_guards.guards.scatter_copyback_alias",
@@ -175,6 +179,10 @@ def _load_guard(name: str):
         from .guards import linalg_nan
 
         return linalg_nan
+    if name == "linalg-pinv-complex-grad":
+        from .guards import linalg_pinv_complex_grad
+
+        return linalg_pinv_complex_grad
     if name == "scatter-copyback-alias":
         from .guards import scatter_copyback_alias
 
@@ -1045,6 +1053,36 @@ def _print_linalg_nan_report(report, *, no_color: bool) -> None:
         )
 
 
+def _print_linalg_pinv_complex_grad_report(report, *, no_color: bool) -> None:
+    style = resolve_style(no_color_flag=no_color)
+    print_fields([("torch version", report["torch_version"]), ("tracking issue", report["issue_url"])])
+
+    if report["any_native_bug"]:
+        print(status_headline(style, "fail", "AOTAutograd complex pinv/matrix_sqrth wrong-gradient bug reproduced on this host (pytorch#197084)"))
+    else:
+        print(status_headline(style, "info", "no complex pinv gradient divergence reproduced on this host's installed torch build"))
+
+    if report["guard_fully_correct"]:
+        print(status_headline(style, "ok", "safe_complex_pinv_grad() restores eager's correct gradient on every case"))
+    else:
+        print(status_headline(style, "fail", "guard did NOT restore the correct gradient on at least one case"))
+
+    section("cases (shape, seed -> aot_eager/inductor/guarded max-abs-diff vs eager)")
+    for c in report["cases"]:
+        native_flag = "WRONG" if (c["aot_eager_diverges"] or c["inductor_diverges"]) else "ok"
+        guard_flag = "guard-ok" if c["guarded_matches_eager"] else "GUARD-FAILED"
+        print_fields(
+            [
+                (
+                    f"shape={tuple(c['shape'])} seed={c['seed']}",
+                    f"aot_eager_diff={c['max_abs_diff_aot_eager']:.3e}  "
+                    f"inductor_diff={c['max_abs_diff_inductor']:.3e}  "
+                    f"native={native_flag:6s}  {guard_flag}",
+                )
+            ]
+        )
+
+
 def _print_report(guard_name: str, report, *, no_color: bool) -> None:
     if guard_name == "as-strided-restride-oob":
         _print_as_strided_report(report, no_color=no_color)
@@ -1078,6 +1116,8 @@ def _print_report(guard_name: str, report, *, no_color: bool) -> None:
         _print_int64_index_truncation_report(report, no_color=no_color)
     elif guard_name == "linalg-nan":
         _print_linalg_nan_report(report, no_color=no_color)
+    elif guard_name == "linalg-pinv-complex-grad":
+        _print_linalg_pinv_complex_grad_report(report, no_color=no_color)
     elif guard_name == "scatter-copyback-alias":
         _print_scatter_copyback_alias_report(report, no_color=no_color)
     elif guard_name == "softmax-dim":

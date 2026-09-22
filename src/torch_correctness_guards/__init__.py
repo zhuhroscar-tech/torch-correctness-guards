@@ -94,6 +94,10 @@ from .guards.linalg_nan import (  # noqa: F401
     safe_svdvals,
     safe_vector_norm,
 )
+from .guards.linalg_pinv_complex_grad import (  # noqa: F401
+    diagnose as diagnose_linalg_pinv_complex_grad,
+    safe_complex_pinv_grad,
+)
 from .guards.scatter_copyback_alias import (  # noqa: F401
     diagnose as diagnose_scatter_copyback_alias,
     safe_compiled_scatter_returning,
