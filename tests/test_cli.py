@@ -12,6 +12,7 @@ from torch_correctness_guards.guards import (
     compile_validation,
     cpu_backward_nan_tail,
     dynamo_closure_descriptor,
+    dtype_view_scatter,
     dynamic_clamp,
     expand_fill,
     normal_dtype_promotion,
@@ -66,6 +67,8 @@ def test_list_includes_migrated_guard(capsys):
     assert "NaN gradients" in out
     assert "dynamo-closure-descriptor" in out
     assert "closure-captured Tensor descriptors" in out
+    assert "dtype-view-scatter" in out
+    assert "diagonal_scatter" in out
     assert "dynamic-clamp" in out
     assert "torch.clamp" in out
     assert "expand-fill" in out
@@ -390,6 +393,53 @@ def test_run_dynamo_closure_descriptor_text_reports_guard_status(monkeypatch, ca
     assert "closure-descriptor graph-reuse divergence reproduced" in out
     assert "safe_call() matches eager" in out
     assert "STALE-REUSE" in out
+
+
+def _fake_dtype_view_scatter_report(**overrides):
+    report = {
+        "torch_version": "9.9.9-fake",
+        "issue_url": "https://github.com/pytorch/pytorch/issues/197408",
+        "related_issue_url": "https://github.com/pytorch/pytorch/issues/195451",
+        "cases": [
+            {
+                "cache0": [0, 0, 0, 0],
+                "data": [1.0, 2.0, 3.0, 4.0],
+                "diag": [-1.0, -1.0],
+                "eager_aliases_input": False,
+                "compiled_aliases_input": True,
+                "eager_values": [1.0, -1.0, 3.0, -1.0],
+                "compiled_values": [1.0, float("nan"), 3.0, float("nan")],
+                "compiled_values_match_eager": False,
+                "compiled_input_corrupted_after_output_mutation": True,
+                "guarded_values_match_eager": True,
+                "guarded_aliases_input_matches_eager": True,
+                "guarded_input_matches_eager_after_output_mutation": True,
+            }
+        ],
+        "any_native_value_bug": True,
+        "any_native_alias_bug": True,
+        "any_native_corruption": True,
+        "guard_fully_correct": True,
+    }
+    report.update(overrides)
+    return report
+
+
+def test_run_dtype_view_scatter_json_includes_guard_name(monkeypatch, capsys):
+    monkeypatch.setattr(dtype_view_scatter, "diagnose", lambda: _fake_dtype_view_scatter_report())
+    assert main(["run", "dtype-view-scatter", "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["guard"] == "dtype-view-scatter"
+    assert payload["guard_fully_correct"] is True
+
+
+def test_run_dtype_view_scatter_text_reports_guard_status(monkeypatch, capsys):
+    monkeypatch.setattr(dtype_view_scatter, "diagnose", lambda: _fake_dtype_view_scatter_report())
+    assert main(["run", "dtype-view-scatter", "--no-color"]) == 0
+    out = capsys.readouterr().out
+    assert "dtype-view/diagonal_scatter value+aliasing bug reproduced" in out
+    assert "safe_compiled_dtype_view_diagonal_scatter() restores eager" in out
+    assert "WRONG-VALUES+ALIASED" in out
 
 
 def _fake_expand_fill_report(**overrides):

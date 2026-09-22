@@ -41,6 +41,10 @@ from .guards.dynamo_closure_descriptor import (  # noqa: F401
     safe_call,
     safe_module_forward,
 )
+from .guards.dtype_view_scatter import (  # noqa: F401
+    diagnose as diagnose_dtype_view_scatter,
+    safe_compiled_dtype_view_diagonal_scatter,
+)
 from .guards.dynamic_clamp import (  # noqa: F401
     diagnose as diagnose_dynamic_clamp,
     safe_clamp,

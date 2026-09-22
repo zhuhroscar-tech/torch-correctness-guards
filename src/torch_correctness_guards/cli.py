@@ -31,6 +31,10 @@ _GUARDS = {
         "description": "Dynamo stale graph reuse for closure-captured Tensor descriptors and related guard omissions",
         "module": "torch_correctness_guards.guards.dynamo_closure_descriptor",
     },
+    "dtype-view-scatter": {
+        "description": "Inductor dtype-view custom-op diagonal_scatter returns NaN values and aliases inputs",
+        "module": "torch_correctness_guards.guards.dtype_view_scatter",
+    },
     "dynamic-clamp": {
         "description": "Inductor stale automatically-dynamic Python float reused in torch.clamp bounds",
         "module": "torch_correctness_guards.guards.dynamic_clamp",
@@ -95,6 +99,10 @@ def _load_guard(name: str):
         from .guards import dynamo_closure_descriptor
 
         return dynamo_closure_descriptor
+    if name == "dtype-view-scatter":
+        from .guards import dtype_view_scatter
+
+        return dtype_view_scatter
     if name == "dynamic-clamp":
         from .guards import dynamic_clamp
 
@@ -635,6 +643,44 @@ def _print_dynamo_closure_descriptor_report(report, *, no_color: bool) -> None:
         )
 
 
+def _print_dtype_view_scatter_report(report, *, no_color: bool) -> None:
+    style = resolve_style(no_color_flag=no_color)
+    print_fields([("torch version", report["torch_version"]), ("tracking issue", report["issue_url"])])
+
+    if report["any_native_value_bug"] or report["any_native_alias_bug"]:
+        print(status_headline(style, "fail", "Inductor dtype-view/diagonal_scatter value+aliasing bug reproduced on this host"))
+    else:
+        print(status_headline(style, "info", "no Inductor dtype-view/diagonal_scatter divergence reproduced on this host's installed torch build"))
+
+    if report["guard_fully_correct"]:
+        print(status_headline(style, "ok", "safe_compiled_dtype_view_diagonal_scatter() restores eager's values and non-aliasing contract on every case"))
+    else:
+        print(status_headline(style, "fail", "guard did NOT restore eager's values/aliasing contract on at least one case"))
+
+    section("cases (n -> eager/compiled/guarded value+aliasing behavior)")
+    for c in report["cases"]:
+        native_flag = (
+            "WRONG-VALUES+ALIASED"
+            if (not c["compiled_values_match_eager"]) and c["compiled_aliases_input"]
+            else "WRONG-VALUES" if not c["compiled_values_match_eager"]
+            else "aliased" if c["compiled_aliases_input"]
+            else "ok"
+        )
+        guard_flag = "guard-ok" if (
+            c["guarded_values_match_eager"]
+            and c["guarded_aliases_input_matches_eager"]
+            and c["guarded_input_matches_eager_after_output_mutation"]
+        ) else "GUARD-FAILED"
+        print_fields(
+            [
+                (
+                    f"n={int(len(c['diag']))}",
+                    f"eager_aliases={c['eager_aliases_input']}  native={native_flag:22s}  {guard_flag}",
+                )
+            ]
+        )
+
+
 def _print_report(guard_name: str, report, *, no_color: bool) -> None:
     if guard_name == "as-strided-restride-oob":
         _print_as_strided_report(report, no_color=no_color)
@@ -646,6 +692,8 @@ def _print_report(guard_name: str, report, *, no_color: bool) -> None:
         _print_cpu_backward_nan_tail_report(report, no_color=no_color)
     elif guard_name == "dynamo-closure-descriptor":
         _print_dynamo_closure_descriptor_report(report, no_color=no_color)
+    elif guard_name == "dtype-view-scatter":
+        _print_dtype_view_scatter_report(report, no_color=no_color)
     elif guard_name == "dynamic-clamp":
         _print_dynamic_clamp_report(report, no_color=no_color)
     elif guard_name == "embeddingbag-freq-scale":
