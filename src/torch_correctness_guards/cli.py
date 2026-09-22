@@ -35,6 +35,10 @@ _GUARDS = {
         "description": "Inductor std/var-family reductions use float32 accumulation where CPU eager uses double precision",
         "module": "torch_correctness_guards.guards.std_precision",
     },
+    "transpose-argmin": {
+        "description": "Inductor wrong argmin/argmax flat index after transpose plus intervening op",
+        "module": "torch_correctness_guards.guards.transpose_argmin",
+    },
 }
 
 
@@ -67,6 +71,10 @@ def _load_guard(name: str):
         from .guards import std_precision
 
         return std_precision
+    if name == "transpose-argmin":
+        from .guards import transpose_argmin
+
+        return transpose_argmin
     raise KeyError(name)  # defensive; argparse constrains this.
 
 
@@ -301,6 +309,35 @@ def _print_std_precision_report(report, *, no_color: bool) -> None:
         )
 
 
+def _print_transpose_argmin_report(report, *, no_color: bool) -> None:
+    style = resolve_style(no_color_flag=no_color)
+    print_fields([("torch version", report["torch_version"])])
+
+    if report["any_transpose_argreduce_divergence"]:
+        print(status_headline(style, "fail", "torch.compile(inductor) transpose+op+argmin/argmax index divergence reproduced on this host"))
+    else:
+        print(status_headline(style, "info", "no transpose+op+argmin/argmax divergence reproduced on this host's installed torch build"))
+
+    if report["guard_fully_correct"]:
+        print(status_headline(style, "ok", "safe_reduce_index() matches eager on every case, including under torch.compile"))
+    else:
+        print(status_headline(style, "fail", "guard did NOT match eager on at least one case"))
+
+    section("cases (op, mode, shape -> eager value vs compiled(native) value)")
+    for c in report["cases"]:
+        flag = "DIVERGES" if c["native_diverges"] else "ok"
+        guard_flag = "guard-ok" if c["guard_matches_eager"] else "GUARD-FAILED"
+        print_fields(
+            [
+                (
+                    f"op={c['op']} mode={c['mode']} shape={c['shape']}",
+                    f"eager={c['eager_value']}  compiled(native)={c['native_compiled_value']}  "
+                    f"{flag:9s}  {guard_flag}",
+                )
+            ]
+        )
+
+
 def _print_report(guard_name: str, report, *, no_color: bool) -> None:
     if guard_name == "as-strided-restride-oob":
         _print_as_strided_report(report, no_color=no_color)
@@ -314,6 +351,8 @@ def _print_report(guard_name: str, report, *, no_color: bool) -> None:
         _print_shuffle_sample_frozen_report(report, no_color=no_color)
     elif guard_name == "std-precision":
         _print_std_precision_report(report, no_color=no_color)
+    elif guard_name == "transpose-argmin":
+        _print_transpose_argmin_report(report, no_color=no_color)
     else:
         _print_addcdiv_report(report, no_color=no_color)
 

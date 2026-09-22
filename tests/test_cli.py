@@ -13,6 +13,7 @@ from torch_correctness_guards.guards import (
     normal_dtype_promotion,
     shuffle_sample_frozen,
     std_precision,
+    transpose_argmin,
 )
 
 
@@ -62,6 +63,8 @@ def test_list_includes_migrated_guard(capsys):
     assert "random.shuffle" in out
     assert "std-precision" in out
     assert "std/var" in out
+    assert "transpose-argmin" in out
+    assert "argmin/argmax" in out
 
 
 def test_run_json_includes_guard_name(monkeypatch, capsys):
@@ -371,3 +374,43 @@ def test_run_std_precision_text_reports_guard_status(monkeypatch, capsys):
     assert "std/var precision divergence reproduced" in out
     assert "silent all-zero std gradient reproduced" in out
     assert "safe_std()/safe_var()/safe_var_mean()/safe_std_mean() match eager" in out
+
+
+def _fake_transpose_argmin_report(**overrides):
+    report = {
+        "torch_version": "9.9.9-fake",
+        "issue_urls": ["https://github.com/pytorch/pytorch/issues/197739"],
+        "cases": [
+            {
+                "op": "add",
+                "mode": "argmin",
+                "shape": [2, 2],
+                "seed": 0,
+                "eager_value": 1,
+                "native_compiled_value": 2,
+                "native_diverges": True,
+                "guard_matches_eager": True,
+            }
+        ],
+        "any_transpose_argreduce_divergence": True,
+        "guard_fully_correct": True,
+    }
+    report.update(overrides)
+    return report
+
+
+def test_run_transpose_argmin_json_includes_guard_name(monkeypatch, capsys):
+    monkeypatch.setattr(transpose_argmin, "diagnose", lambda: _fake_transpose_argmin_report())
+    assert main(["run", "transpose-argmin", "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["guard"] == "transpose-argmin"
+    assert payload["guard_fully_correct"] is True
+
+
+def test_run_transpose_argmin_text_reports_guard_status(monkeypatch, capsys):
+    monkeypatch.setattr(transpose_argmin, "diagnose", lambda: _fake_transpose_argmin_report())
+    assert main(["run", "transpose-argmin", "--no-color"]) == 0
+    out = capsys.readouterr().out
+    assert "transpose+op+argmin/argmax index divergence reproduced" in out
+    assert "safe_reduce_index() matches eager" in out
+    assert "DIVERGES" in out

@@ -38,4 +38,8 @@ from .guards.std_precision import (  # noqa: F401
     safe_var,
     safe_var_mean,
 )
+from .guards.transpose_argmin import (  # noqa: F401
+    diagnose as diagnose_transpose_argmin,
+    safe_reduce_index,
+)
 
