@@ -43,6 +43,10 @@ _GUARDS = {
         "description": "Inductor stale automatically-dynamic Python float reused in torch.clamp bounds",
         "module": "torch_correctness_guards.guards.dynamic_clamp",
     },
+    "equality-fusion": {
+        "description": "Inductor low-precision division fused into equality/argmax comparison skips rounding boundary",
+        "module": "torch_correctness_guards.guards.equality_fusion",
+    },
     "embeddingbag-freq-scale": {
         "description": "MPS embedding_bag silently ignores scale_grad_by_freq=True in backward",
         "module": "torch_correctness_guards.guards.embeddingbag_freq_scale",
@@ -115,6 +119,10 @@ def _load_guard(name: str):
         from .guards import dynamic_clamp
 
         return dynamic_clamp
+    if name == "equality-fusion":
+        from .guards import equality_fusion
+
+        return equality_fusion
     if name == "embeddingbag-freq-scale":
         from .guards import embeddingbag_freq_scale
 
@@ -306,6 +314,40 @@ def _print_dynamic_clamp_report(report, *, no_color: bool) -> None:
                     f"call {c['call_index']}",
                     f"shape={c['shape']!s:10s} requires_grad={c['requires_grad']!s:5s} limit={c['limit']}  "
                     f"eager={c['eager_value']:.6f}  compiled={c['compiled_value']:.6f}  {flag:11s}  {guard_flag}",
+                )
+            ]
+        )
+
+
+def _print_equality_fusion_report(report, *, no_color: bool) -> None:
+    style = resolve_style(no_color_flag=no_color)
+    print_fields([("torch version", report["torch_version"]), ("tracking issue", report["issue_url"])])
+
+    if report["any_default_inductor_diverges_on_bf16"]:
+        print(status_headline(style, "fail", "Inductor bf16 division/equality fusion divergence reproduced on this host"))
+    else:
+        print(status_headline(style, "info", "no bf16 division/equality fusion divergence reproduced on this host's installed torch build"))
+
+    if report["guard_fully_correct"]:
+        print(status_headline(style, "ok", "precision_safe_division_compare() matches eager on every case"))
+    else:
+        print(status_headline(style, "fail", "precision_safe_division_compare() did NOT match eager on at least one case"))
+
+    if report["emulate_precision_casts_fully_correct"]:
+        print(status_headline(style, "ok", "emulate_precision_casts=True also matches eager on every case"))
+    else:
+        print(status_headline(style, "warn", "emulate_precision_casts=True did not match eager on at least one case"))
+
+    section("cases (dtype -> eager vs default-inductor vs guarded)")
+    for c in report["cases"]:
+        default_flag = "MATCH" if c["inductor_default_matches_eager"] else "DIVERGES"
+        guard_flag = "guard-ok" if c["guarded_matches_eager"] else "GUARD-FAILED"
+        nonfinite_flag = " nonfinite-downstream!" if c["inductor_default_any_nonfinite_downstream"] else ""
+        print_fields(
+            [
+                (
+                    c["description"][:48],
+                    f"default={default_flag:9s}{nonfinite_flag}  {guard_flag}",
                 )
             ]
         )
@@ -739,6 +781,8 @@ def _print_report(guard_name: str, report, *, no_color: bool) -> None:
         _print_duplicate_index_writeorder_report(report, no_color=no_color)
     elif guard_name == "dynamic-clamp":
         _print_dynamic_clamp_report(report, no_color=no_color)
+    elif guard_name == "equality-fusion":
+        _print_equality_fusion_report(report, no_color=no_color)
     elif guard_name == "embeddingbag-freq-scale":
         _print_embeddingbag_freq_scale_report(report, no_color=no_color)
     elif guard_name == "expand-fill":

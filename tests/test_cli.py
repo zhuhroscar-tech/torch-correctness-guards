@@ -15,6 +15,7 @@ from torch_correctness_guards.guards import (
     dtype_view_scatter,
     duplicate_index_writeorder,
     dynamic_clamp,
+    equality_fusion,
     expand_fill,
     normal_dtype_promotion,
     shuffle_sample_frozen,
@@ -74,6 +75,8 @@ def test_list_includes_migrated_guard(capsys):
     assert "duplicate-index" in out
     assert "dynamic-clamp" in out
     assert "torch.clamp" in out
+    assert "equality-fusion" in out
+    assert "division fused into equality" in out
     assert "expand-fill" in out
     assert "Tensor.expand" in out
     assert "normal-dtype-promotion" in out
@@ -298,6 +301,49 @@ def test_run_dynamic_clamp_text_reports_guard_status(monkeypatch, capsys):
     assert "stale dynamic-float clamp reuse reproduced" in out
     assert "safe_clamp() matches eager" in out
     assert "STALE-REUSE" in out
+
+
+def _fake_equality_fusion_report(**overrides):
+    report = {
+        "torch_version": "9.9.9-fake",
+        "issue_url": "https://github.com/pytorch/pytorch/issues/195214",
+        "cases": [
+            {
+                "description": "fake bf16 case",
+                "dtype": "torch.bfloat16",
+                "eager_tie_counts": [1],
+                "inductor_default_tie_counts": [0],
+                "inductor_default_matches_eager": False,
+                "inductor_default_any_nonfinite_downstream": True,
+                "inductor_emulate_precision_tie_counts": [1],
+                "inductor_emulate_precision_matches_eager": True,
+                "guarded_tie_counts": [1],
+                "guarded_matches_eager": True,
+            }
+        ],
+        "any_default_inductor_diverges_on_bf16": True,
+        "guard_fully_correct": True,
+        "emulate_precision_casts_fully_correct": True,
+    }
+    report.update(overrides)
+    return report
+
+
+def test_run_equality_fusion_json_includes_guard_name(monkeypatch, capsys):
+    monkeypatch.setattr(equality_fusion, "diagnose", lambda: _fake_equality_fusion_report())
+    assert main(["run", "equality-fusion", "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["guard"] == "equality-fusion"
+    assert payload["guard_fully_correct"] is True
+
+
+def test_run_equality_fusion_text_reports_guard_status(monkeypatch, capsys):
+    monkeypatch.setattr(equality_fusion, "diagnose", lambda: _fake_equality_fusion_report())
+    assert main(["run", "equality-fusion", "--no-color"]) == 0
+    out = capsys.readouterr().out
+    assert "division/equality fusion divergence reproduced" in out
+    assert "precision_safe_division_compare() matches eager" in out
+    assert "DIVERGES" in out
 
 
 def _fake_compile_validation_case(name, is_boundary, bypassed, guard_ok):

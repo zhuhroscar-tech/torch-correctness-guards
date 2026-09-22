@@ -54,6 +54,10 @@ from .guards.dynamic_clamp import (  # noqa: F401
     diagnose as diagnose_dynamic_clamp,
     safe_clamp,
 )
+from .guards.equality_fusion import (  # noqa: F401
+    diagnose as diagnose_equality_fusion,
+    precision_safe_division_compare,
+)
 from .guards.embeddingbag_freq_scale import (  # noqa: F401
     diagnose as diagnose_embeddingbag_freq_scale,
     make_safe_embedding_bag,

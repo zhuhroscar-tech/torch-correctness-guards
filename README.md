@@ -17,6 +17,7 @@ The package replaces the older one-repo-per-guard pattern with one installable C
 | dtype-view scatter | `dtype-view-scatter` | pytorch/pytorch#197408 | Reproduces Inductor value corruption and return-aliasing drift for dtype-view + custom-op + `diagonal_scatter`, then verifies `safe_compiled_dtype_view_diagonal_scatter` restores eager's values and non-aliasing contract. |
 | duplicate index write-order | `duplicate-index-writeorder` | pytorch/pytorch#197582 | Reproduces Inductor miscompiling `v[idx] = v[idx] + delta` when `idx` is a computed duplicate index such as `torch.arange(n) % 2`, then verifies `safe_dup_index_assign` restores eager semantics. |
 | dynamic clamp | `dynamic-clamp` | pytorch/pytorch#194976, nvidia/Megatron-LM#6918 | Reproduces Inductor stale reuse of automatically-dynamic Python float bounds in `torch.clamp` and verifies the `safe_clamp` call-site guard. |
+| equality fusion | `equality-fusion` | pytorch/pytorch#195214 | Reproduces Inductor fusing a low-precision division into a following equality/argmax comparison without preserving the eager rounding boundary, then verifies `precision_safe_division_compare` restores eager tie counts. |
 | embedding_bag frequency scaling | `embeddingbag-freq-scale` | pytorch/pytorch#190061 | Reproduces the MPS backend silently ignoring `scale_grad_by_freq=True` in `embedding_bag` backward and verifies `safe_embedding_bag` matches the CPU-oracle gradient. |
 | expand fill | `expand-fill` | pytorch/pytorch#197448 | Reproduces Inductor writing wrong values for `.fill_(scalar)` on a broadcast view created by `Tensor.expand()` and verifies `safe_fill_` matches eager. |
 | fp16 LayerNorm tail | `fp16-layernorm-tail` | none filed | Reproduces CPU float16 `layer_norm` returning nonzero output for exact-constant rows and verifies `safe_layer_norm` computes through a float32 upcast. |
@@ -52,6 +53,7 @@ torch-guard run dynamo-closure-descriptor
 torch-guard run dtype-view-scatter
 torch-guard run duplicate-index-writeorder
 torch-guard run dynamic-clamp
+torch-guard run equality-fusion
 torch-guard run embeddingbag-freq-scale
 torch-guard run expand-fill
 torch-guard run fp16-layernorm-tail
@@ -77,6 +79,7 @@ from torch_correctness_guards import safe_bound_method_call, safe_call, safe_mod
 from torch_correctness_guards import safe_compiled_dtype_view_diagonal_scatter
 from torch_correctness_guards import safe_dup_index_assign
 from torch_correctness_guards import safe_clamp
+from torch_correctness_guards import precision_safe_division_compare
 from torch_correctness_guards import safe_embedding_bag
 from torch_correctness_guards import safe_fill_
 from torch_correctness_guards import safe_layer_norm
@@ -92,6 +95,7 @@ z = safe_rrelu(x, lower=0.125, upper=1 / 3, training=True)
 grad = safe_hardtanh_backward(grad_output, x)
 y = safe_call(torch.Tensor.__mul__, a, b)
 w = safe_clamp(x, max=limit)
+divide = precision_safe_division_compare(lambda x, const: x / const)
 emb = safe_embedding_bag(idx, weight, offsets, mode="sum", scale_grad_by_freq=True)
 safe_fill_(x.expand(3, -1), 2.0)
 ln = safe_layer_norm(x, (x.shape[-1],))
