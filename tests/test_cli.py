@@ -10,6 +10,7 @@ from torch_correctness_guards.guards import (
     as_strided_restride_oob,
     checkpoint_noise,
     compile_validation,
+    cpu_backward_nan_tail,
     dynamic_clamp,
     normal_dtype_promotion,
     shuffle_sample_frozen,
@@ -58,6 +59,8 @@ def test_list_includes_migrated_guard(capsys):
     assert "F.rrelu" in out
     assert "compile-validation" in out
     assert "input validation" in out
+    assert "cpu-backward-nan-tail" in out
+    assert "NaN gradients" in out
     assert "dynamic-clamp" in out
     assert "torch.clamp" in out
     assert "normal-dtype-promotion" in out
@@ -297,6 +300,47 @@ def test_run_compile_validation_text_reports_guard_status(monkeypatch, capsys):
     assert "input-validation bypass reproduced" in out
     assert "guard wrappers restore eager" in out
     assert "BYPASSED" in out
+
+
+def _fake_cpu_backward_nan_tail_report(**overrides):
+    report = {
+        "torch_version": "9.9.9-fake",
+        "issue_urls": ["https://github.com/pytorch/pytorch/issues/195075"],
+        "cases": [
+            {
+                "op": "hardtanh_backward",
+                "length": 9,
+                "buggy_grad_first": 0.0,
+                "buggy_grad_last": 1.0,
+                "buggy_position_dependent": True,
+                "guard_grad_first": 1.0,
+                "guard_grad_last": 1.0,
+                "guard_consistent": True,
+            }
+        ],
+        "any_bug_present": True,
+        "guard_fully_effective": True,
+        "guard_fully_correct": True,
+    }
+    report.update(overrides)
+    return report
+
+
+def test_run_cpu_backward_nan_tail_json_includes_guard_name(monkeypatch, capsys):
+    monkeypatch.setattr(cpu_backward_nan_tail, "diagnose", lambda: _fake_cpu_backward_nan_tail_report())
+    assert main(["run", "cpu-backward-nan-tail", "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["guard"] == "cpu-backward-nan-tail"
+    assert payload["guard_fully_effective"] is True
+
+
+def test_run_cpu_backward_nan_tail_text_reports_guard_status(monkeypatch, capsys):
+    monkeypatch.setattr(cpu_backward_nan_tail, "diagnose", lambda: _fake_cpu_backward_nan_tail_report())
+    assert main(["run", "cpu-backward-nan-tail", "--no-color"]) == 0
+    out = capsys.readouterr().out
+    assert "length-dependent NaN-gradient divergence reproduced" in out
+    assert "every safe_* backward guard is length-independent" in out
+    assert "LENGTH-DEP-BUG" in out
 
 
 def _fake_normal_dtype_promotion_report(**overrides):

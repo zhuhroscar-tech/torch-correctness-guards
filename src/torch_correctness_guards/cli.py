@@ -23,6 +23,10 @@ _GUARDS = {
         "description": "torch.compile skips eager input validation for several out-of-domain operator calls",
         "module": "torch_correctness_guards.guards.compile_validation",
     },
+    "cpu-backward-nan-tail": {
+        "description": "CPU backward kernels return NaN gradients differently in SIMD vector blocks versus scalar tails",
+        "module": "torch_correctness_guards.guards.cpu_backward_nan_tail",
+    },
     "dynamic-clamp": {
         "description": "Inductor stale automatically-dynamic Python float reused in torch.clamp bounds",
         "module": "torch_correctness_guards.guards.dynamic_clamp",
@@ -63,6 +67,10 @@ def _load_guard(name: str):
         from .guards import compile_validation
 
         return compile_validation
+    if name == "cpu-backward-nan-tail":
+        from .guards import cpu_backward_nan_tail
+
+        return cpu_backward_nan_tail
     if name == "dynamic-clamp":
         from .guards import dynamic_clamp
 
@@ -253,6 +261,39 @@ def _print_compile_validation_report(report, *, no_color: bool) -> None:
         )
 
 
+def _print_cpu_backward_nan_tail_report(report, *, no_color: bool) -> None:
+    style = resolve_style(no_color_flag=no_color)
+    print_fields(
+        [
+            ("torch version", report["torch_version"]),
+            ("tracking issue", ", ".join(report["issue_urls"])),
+        ]
+    )
+
+    if report["any_bug_present"]:
+        print(status_headline(style, "warn", "length-dependent NaN-gradient divergence reproduced on this host's installed torch build"))
+    else:
+        print(status_headline(style, "info", "bug NOT reproduced on this host's installed torch build (fixed upstream)"))
+
+    if report["guard_fully_effective"]:
+        print(status_headline(style, "ok", "every safe_* backward guard is length-independent at every tested length/op"))
+    else:
+        print(status_headline(style, "fail", "at least one backward guard is still length-dependent"))
+
+    section("per-case results (op x tensor length)")
+    for c in report["cases"]:
+        bug_flag = "LENGTH-DEP-BUG" if c["buggy_position_dependent"] else "consistent"
+        guard_flag = "guard-ok" if c["guard_consistent"] else "GUARD-FAILED"
+        print_fields(
+            [
+                (
+                    f"{c['op']} n={c['length']}",
+                    f"unguarded[0]={c['buggy_grad_first']!s:>6s} unguarded[-1]={c['buggy_grad_last']!s:>6s}  {bug_flag:15s}  {guard_flag}",
+                )
+            ]
+        )
+
+
 def _print_normal_dtype_promotion_report(report, *, no_color: bool) -> None:
     style = resolve_style(no_color_flag=no_color)
     print_fields([("torch version", report["torch_version"])])
@@ -392,6 +433,8 @@ def _print_report(guard_name: str, report, *, no_color: bool) -> None:
         _print_checkpoint_noise_report(report, no_color=no_color)
     elif guard_name == "compile-validation":
         _print_compile_validation_report(report, no_color=no_color)
+    elif guard_name == "cpu-backward-nan-tail":
+        _print_cpu_backward_nan_tail_report(report, no_color=no_color)
     elif guard_name == "dynamic-clamp":
         _print_dynamic_clamp_report(report, no_color=no_color)
     elif guard_name == "normal-dtype-promotion":
@@ -449,10 +492,10 @@ def main(argv=None) -> int:
         if args.json:
             payload = {"guard": args.guard, **report}
             print(json.dumps(payload, indent=2))
-            return 0 if report["guard_fully_correct"] else 1
+            return 0 if report.get("guard_fully_correct", report.get("guard_fully_effective")) else 1
 
         _print_report(args.guard, report, no_color=args.no_color)
-        return 0 if report["guard_fully_correct"] else 1
+        return 0 if report.get("guard_fully_correct", report.get("guard_fully_effective")) else 1
 
     parser.print_help()
     return 0

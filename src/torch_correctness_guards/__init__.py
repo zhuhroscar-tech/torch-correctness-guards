@@ -24,6 +24,15 @@ from .guards.compile_validation import (  # noqa: F401
     safe_compiled_normal,
     safe_compiled_upsample_bilinear2d,
 )
+from .guards.cpu_backward_nan_tail import (  # noqa: F401
+    diagnose as diagnose_cpu_backward_nan_tail,
+    safe_celu_backward,
+    safe_elu_backward,
+    safe_hardswish_backward,
+    safe_hardtanh_backward,
+    safe_logit_backward,
+    safe_shrink_backward,
+)
 from .guards.dynamic_clamp import (  # noqa: F401
     diagnose as diagnose_dynamic_clamp,
     safe_clamp,

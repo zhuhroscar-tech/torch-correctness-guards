@@ -12,6 +12,7 @@ The package replaces the older one-repo-per-guard pattern with one installable C
 | as_strided restride OOB | `as-strided-restride-oob` | pytorch/pytorch#197431, pytorch/pytorch#192226 | Reproduces an Inductor storage-span miscalculation for `torch.as_strided` on repeated+sliced restrided views and verifies the eager call-site guard. |
 | checkpoint noise | `checkpoint-noise` | pytorch/pytorch#193671 | Reproduces `F.rrelu(..., training=True)` silently wrong gradients under non-reentrant checkpointing or saved-tensors hooks and verifies the `safe_rrelu` replacement. |
 | compile validation | `compile-validation` | pytorch/pytorch#185246, pytorch/pytorch#185248, pytorch/pytorch#193757, pytorch/pytorch#194548, pytorch/pytorch#193811 | Reproduces `torch.compile` accepting out-of-domain inputs that eager rejects for bernoulli, normal, BCE, categorical sampling, and bilinear upsampling, then verifies guard wrappers restore eager validation. |
+| CPU backward NaN tail | `cpu-backward-nan-tail` | pytorch/pytorch#195075 | Reproduces CPU backward kernels returning different gradients at NaN elements in SIMD vector blocks versus scalar tails, then verifies length-independent `safe_*_backward` guards. |
 | dynamic clamp | `dynamic-clamp` | pytorch/pytorch#194976, nvidia/Megatron-LM#6918 | Reproduces Inductor stale reuse of automatically-dynamic Python float bounds in `torch.clamp` and verifies the `safe_clamp` call-site guard. |
 | Normal.sample dtype promotion | `normal-dtype-promotion` | pytorch/pytorch#194547 | Reproduces `torch.compile` silently promoting `torch.distributions.Normal.sample()` output dtype when eager preserves the lower-precision `loc` dtype, and verifies the wrapper restores eager's dtype contract. |
 | shuffle/sample frozen RNG | `shuffle-sample-frozen` | pytorch/pytorch#197085 | Reproduces Dynamo baking `random.shuffle()` / `random.sample()` results into a compiled graph as trace-time constants and verifies graph-break wrappers restore eager per-call randomness. |
@@ -39,6 +40,7 @@ torch-guard run addcdiv-stale-scalar
 torch-guard run as-strided-restride-oob
 torch-guard run checkpoint-noise
 torch-guard run compile-validation
+torch-guard run cpu-backward-nan-tail
 torch-guard run dynamic-clamp
 torch-guard run normal-dtype-promotion
 torch-guard run shuffle-sample-frozen
@@ -56,6 +58,7 @@ from torch_correctness_guards import make_safe_stale_scalar_step
 from torch_correctness_guards import safe_as_strided
 from torch_correctness_guards import safe_rrelu
 from torch_correctness_guards import safe_compiled_bernoulli
+from torch_correctness_guards import safe_hardtanh_backward, safe_logit_backward
 from torch_correctness_guards import safe_clamp
 from torch_correctness_guards import safe_compiled_normal_sample
 from torch_correctness_guards import safe_sample, safe_shuffle
@@ -65,6 +68,7 @@ from torch_correctness_guards import safe_reduce_index
 safe_bias_correction = make_safe_stale_scalar_step(torch)
 y = safe_as_strided(sliced, size, stride, storage_offset=None)
 z = safe_rrelu(x, lower=0.125, upper=1 / 3, training=True)
+grad = safe_hardtanh_backward(grad_output, x)
 w = safe_clamp(x, max=limit)
 sample = safe_compiled_normal_sample(compiled_fn, eager_fn)(loc, scale)
 safe_shuffle(items)
