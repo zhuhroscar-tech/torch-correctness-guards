@@ -71,6 +71,10 @@ _GUARDS = {
         "description": "Inductor truncates int64 arange-multiply expressions to 32-bit-range arithmetic",
         "module": "torch_correctness_guards.guards.int64_index_truncation",
     },
+    "scatter-copyback-alias": {
+        "description": "Inductor return-value aliasing drift for scatter copy-back and no-op elimination rewrites",
+        "module": "torch_correctness_guards.guards.scatter_copyback_alias",
+    },
     "tiled-reduction-tail-store": {
         "description": "Inductor CPU 2D-tiled reduction tail store can overrun or corrupt outputs",
         "module": "torch_correctness_guards.guards.tiled_reduction_tail_store",
@@ -159,6 +163,10 @@ def _load_guard(name: str):
         from .guards import int64_index_truncation
 
         return int64_index_truncation
+    if name == "scatter-copyback-alias":
+        from .guards import scatter_copyback_alias
+
+        return scatter_copyback_alias
     if name == "tiled-reduction-tail-store":
         from .guards import tiled_reduction_tail_store
 
@@ -611,6 +619,50 @@ def _print_int64_index_truncation_report(report, *, no_color: bool) -> None:
         )
 
 
+def _print_scatter_copyback_alias_report(report, *, no_color: bool) -> None:
+    style = resolve_style(no_color_flag=no_color)
+    print_fields([("torch version", report["torch_version"])])
+
+    if report["any_native_alias_bug"]:
+        print(status_headline(style, "fail", "Inductor direct-scatter-copyback aliasing bug reproduced on this host (pytorch#195451)"))
+    else:
+        print(status_headline(style, "info", "no direct-scatter-copyback aliasing divergence reproduced on this host's installed torch build"))
+
+    if report["any_noop_alias_bug"]:
+        print(status_headline(style, "fail", "Inductor no-op-elimination aliasing bug reproduced on this host (pytorch#197893)"))
+    else:
+        print(status_headline(style, "info", "no no-op-elimination aliasing divergence reproduced on this host's installed torch build"))
+
+    if report["guard_fully_correct"] and report["noop_guard_fully_correct"]:
+        print(status_headline(style, "ok", "safe_compiled_scatter_returning() restores eager's non-aliasing contract for both root causes"))
+    else:
+        print(status_headline(style, "fail", "guard did NOT restore eager's non-aliasing contract on at least one case"))
+
+    section("scatter-copyback cases")
+    for c in report["cases"]:
+        native_flag = "ALIASED+CORRUPTED" if c["compiled_input_corrupted_after_output_mutation"] else (
+            "aliased" if c["compiled_aliases_input"] else "ok"
+        )
+        guard_flag = "guard-ok" if (
+            not c["guarded_aliases_input"]
+            and not c["guarded_input_corrupted_after_output_mutation"]
+            and c["guarded_values_match_eager"]
+        ) else "GUARD-FAILED"
+        print_fields([(f"x0={c['x0']} src={c['src']}", f"native={native_flag:18s}  {guard_flag}")])
+
+    section("no-op-elimination cases")
+    for c in report["noop_cases"]:
+        native_flag = "ALIASED+CORRUPTED" if c["compiled_input_corrupted_after_output_mutation"] else (
+            "aliased" if c["compiled_aliases_input"] else "ok"
+        )
+        guard_flag = "guard-ok" if (
+            not c["guarded_aliases_input"]
+            and not c["guarded_input_corrupted_after_output_mutation"]
+            and c["guarded_values_match_eager"]
+        ) else "GUARD-FAILED"
+        print_fields([(f"op={c['op_name']}", f"native={native_flag:18s}  {guard_flag}")])
+
+
 def _print_compile_validation_report(report, *, no_color: bool) -> None:
     style = resolve_style(no_color_flag=no_color)
     print_fields([("torch version", report["torch_version"])])
@@ -948,6 +1000,8 @@ def _print_report(guard_name: str, report, *, no_color: bool) -> None:
         _print_inplace_slice_shift_aliasing_report(report, no_color=no_color)
     elif guard_name == "int64-index-truncation":
         _print_int64_index_truncation_report(report, no_color=no_color)
+    elif guard_name == "scatter-copyback-alias":
+        _print_scatter_copyback_alias_report(report, no_color=no_color)
     elif guard_name == "normal-dtype-promotion":
         _print_normal_dtype_promotion_report(report, no_color=no_color)
     elif guard_name == "shuffle-sample-frozen":

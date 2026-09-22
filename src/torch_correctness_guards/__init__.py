@@ -86,6 +86,10 @@ from .guards.int64_index_truncation import (  # noqa: F401
     make_safe_int64_arange_mul,
     safe_int64_arange_mul,
 )
+from .guards.scatter_copyback_alias import (  # noqa: F401
+    diagnose as diagnose_scatter_copyback_alias,
+    safe_compiled_scatter_returning,
+)
 from .guards.normal_dtype_promotion import (  # noqa: F401
     diagnose as diagnose_normal_dtype_promotion,
     safe_compiled_normal_sample,
