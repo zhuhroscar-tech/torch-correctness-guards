@@ -21,6 +21,7 @@ from torch_correctness_guards.guards import (
     inplace_slice_shift_aliasing,
     int64_index_truncation,
     linalg_pinv_complex_grad,
+    memory_budget_rng,
     normal_dtype_promotion,
     shuffle_sample_frozen,
     softmax_dim,
@@ -92,6 +93,8 @@ def test_list_includes_migrated_guard(capsys):
     assert "int64 arange-multiply" in out
     assert "linalg-pinv-complex-grad" in out
     assert "complex torch.linalg.pinv gradients" in out
+    assert "memory-budget-rng" in out
+    assert "activation_memory_budget" in out
     assert "normal-dtype-promotion" in out
     assert "Normal.sample" in out
     assert "shuffle-sample-frozen" in out
@@ -168,6 +171,50 @@ def test_run_linalg_pinv_complex_grad_text_reports_guard_status(monkeypatch, cap
     assert "complex pinv/matrix_sqrth wrong-gradient bug reproduced" in out
     assert "safe_complex_pinv_grad() restores eager's correct gradient" in out
     assert "aot_eager_diff=" in out
+
+
+def _fake_memory_budget_rng_report(**overrides):
+    report = {
+        "torch_version": "9.9.9-fake",
+        "issue_url": "https://github.com/pytorch/pytorch/issues/190758",
+        "unguarded_cases": [
+            {
+                "budget": 0.0,
+                "x_grad": [[10.0]],
+                "expected_grad_from_forward_mask": [[14.0]],
+                "matches": False,
+            }
+        ],
+        "guarded_cases": [
+            {
+                "budget": 0.0,
+                "x_grad": [[14.0]],
+                "expected_grad_from_forward_mask": [[14.0]],
+                "matches": True,
+            }
+        ],
+        "any_unguarded_rng_recompute_bug": True,
+        "guard_fully_correct": True,
+    }
+    report.update(overrides)
+    return report
+
+
+def test_run_memory_budget_rng_json_includes_guard_name(monkeypatch, capsys):
+    monkeypatch.setattr(memory_budget_rng, "diagnose", lambda: _fake_memory_budget_rng_report())
+    assert main(["run", "memory-budget-rng", "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["guard"] == "memory-budget-rng"
+    assert payload["guard_fully_correct"] is True
+
+
+def test_run_memory_budget_rng_text_reports_guard_status(monkeypatch, capsys):
+    monkeypatch.setattr(memory_budget_rng, "diagnose", lambda: _fake_memory_budget_rng_report())
+    assert main(["run", "memory-budget-rng", "--no-color"]) == 0
+    out = capsys.readouterr().out
+    assert "activation_memory_budget RNG-recompute gradient bug reproduced" in out
+    assert "safe_compile() prevents the divergence" in out
+    assert "WRONG-GRADIENT" in out
 
 
 def test_torch_unavailable_sets_exit_2(monkeypatch, capsys):

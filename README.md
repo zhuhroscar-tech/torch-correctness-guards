@@ -26,6 +26,7 @@ The package replaces the older one-repo-per-guard pattern with one installable C
 | int64 index truncation | `int64-index-truncation` | pytorch/pytorch#183901 | Reproduces Inductor truncating int64 `arange`-multiply expressions to 32-bit-range arithmetic before storing an int64 result, then verifies eager graph-break guards restore exact values. |
 | linalg NaN/Inf guards | `linalg-nan` | pytorch/pytorch#187759, numpy/numpy#20280, pytorch/pytorch#169237, pytorch/pytorch#193006 | Reproduces `torch.linalg.svdvals()` / `eigvalsh()` values-only routines silently swallowing non-finite input and verifies safe finite-input guards; also ships precision/overflow-safe L2 norm wrappers. |
 | linalg complex pinv gradients | `linalg-pinv-complex-grad` | pytorch/pytorch#197084 | Reproduces AOTAutograd backends computing wrong gradients for complex `torch.linalg.pinv()` / `matrix_sqrth` under `torch.compile`, then verifies `safe_complex_pinv_grad` graph-breaks the call-site back to eager gradients. |
+| memory-budget RNG recompute | `memory-budget-rng` | pytorch/pytorch#190758 | Reproduces AOTAutograd recomputing RNG ops with fresh randomness when `activation_memory_budget < 1.0`, then verifies `safe_compile` temporarily forces budget=1.0 and restores the caller's setting. |
 | scatter copy-back aliasing | `scatter-copyback-alias` | pytorch/pytorch#195451, pytorch/pytorch#197893 | Reproduces Inductor changing a compiled function's return-value aliasing contract for scatter copy-back and no-op-elimination rewrites, then verifies `safe_compiled_scatter_returning` restores eager's non-aliasing behavior. |
 | softmax dim attention rewrite | `softmax-dim` | pytorch/pytorch#196468 | Reproduces Inductor rewriting attention-shaped `matmul -> softmax(dim=non-last) -> matmul` graphs as if `dim=-1`, then verifies `safe_softmax_attention` preserves eager semantics. |
 | 2D tiled reduction tail store | `tiled-reduction-tail-store` | pytorch/pytorch#196681 | Reproduces Inductor's CPU 2D-tiled reduction tail-store overrun/corruption in isolated subprocesses and verifies `safe_compiled_reduction` never silently trusts a corrupted result. |
@@ -69,6 +70,7 @@ torch-guard run inplace-slice-shift-aliasing
 torch-guard run int64-index-truncation
 torch-guard run linalg-nan
 torch-guard run linalg-pinv-complex-grad
+torch-guard run memory-budget-rng
 torch-guard run scatter-copyback-alias
 torch-guard run softmax-dim
 torch-guard run tiled-reduction-tail-store
@@ -103,6 +105,7 @@ from torch_correctness_guards import safe_compiled_reduction
 from torch_correctness_guards import safe_int64_arange_mul
 from torch_correctness_guards import safe_svdvals, safe_eigvalsh, safe_vector_norm, safe_norm
 from torch_correctness_guards import safe_complex_pinv_grad
+from torch_correctness_guards import safe_compile
 from torch_correctness_guards import safe_compiled_scatter_returning
 from torch_correctness_guards import safe_softmax_attention
 from torch_correctness_guards import safe_compiled_normal_sample
@@ -126,6 +129,7 @@ checked = safe_compiled_reduction(compiled_fn, eager_fn)(x)
 products = safe_int64_arange_mul(0, 9, torch.tensor(1500000000, dtype=torch.int64))
 vals = safe_svdvals(matrix)
 safe_pinv = safe_complex_pinv_grad(lambda a: torch.linalg.pinv(a).sum().abs())
+safe_model = safe_compile(model)
 safe_fn = safe_compiled_scatter_returning(compiled_fn)
 attn = safe_softmax_attention(q, k, v, dim=0)
 safe_dup_index_assign(v, idx, 1.0)

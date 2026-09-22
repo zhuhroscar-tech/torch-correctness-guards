@@ -79,6 +79,10 @@ _GUARDS = {
         "description": "AOTAutograd computes wrong complex torch.linalg.pinv gradients under torch.compile",
         "module": "torch_correctness_guards.guards.linalg_pinv_complex_grad",
     },
+    "memory-budget-rng": {
+        "description": "AOTAutograd activation_memory_budget can recompute RNG ops with fresh randomness in backward",
+        "module": "torch_correctness_guards.guards.memory_budget_rng",
+    },
     "scatter-copyback-alias": {
         "description": "Inductor return-value aliasing drift for scatter copy-back and no-op elimination rewrites",
         "module": "torch_correctness_guards.guards.scatter_copyback_alias",
@@ -183,6 +187,10 @@ def _load_guard(name: str):
         from .guards import linalg_pinv_complex_grad
 
         return linalg_pinv_complex_grad
+    if name == "memory-budget-rng":
+        from .guards import memory_budget_rng
+
+        return memory_budget_rng
     if name == "scatter-copyback-alias":
         from .guards import scatter_copyback_alias
 
@@ -1083,6 +1091,31 @@ def _print_linalg_pinv_complex_grad_report(report, *, no_color: bool) -> None:
         )
 
 
+def _print_memory_budget_rng_report(report, *, no_color: bool) -> None:
+    style = resolve_style(no_color_flag=no_color)
+    print_fields([("torch version", report["torch_version"]), ("tracking issue", report["issue_url"])])
+
+    if report["any_unguarded_rng_recompute_bug"]:
+        print(status_headline(style, "fail", "torch.compile activation_memory_budget RNG-recompute gradient bug reproduced on this host (pytorch#190758)"))
+    else:
+        print(status_headline(style, "info", "no activation_memory_budget RNG-recompute divergence reproduced on this host's installed torch build"))
+
+    if report["guard_fully_correct"]:
+        print(status_headline(style, "ok", "safe_compile() prevents the divergence at every tested budget and restores the caller's budget"))
+    else:
+        print(status_headline(style, "fail", "safe_compile() did NOT prevent the divergence at at least one tested budget"))
+
+    section("unguarded cases (budget -> actual gradient vs gradient implied by forward mask)")
+    for c in report["unguarded_cases"]:
+        flag = "ok" if c["matches"] else "WRONG-GRADIENT"
+        print_fields([(f"budget={c['budget']}", flag)])
+
+    section("guarded cases (requested budget -> guard result)")
+    for c in report["guarded_cases"]:
+        flag = "guard-ok" if c["matches"] else "GUARD-FAILED"
+        print_fields([(f"requested_budget={c['budget']}", flag)])
+
+
 def _print_report(guard_name: str, report, *, no_color: bool) -> None:
     if guard_name == "as-strided-restride-oob":
         _print_as_strided_report(report, no_color=no_color)
@@ -1118,6 +1151,8 @@ def _print_report(guard_name: str, report, *, no_color: bool) -> None:
         _print_linalg_nan_report(report, no_color=no_color)
     elif guard_name == "linalg-pinv-complex-grad":
         _print_linalg_pinv_complex_grad_report(report, no_color=no_color)
+    elif guard_name == "memory-budget-rng":
+        _print_memory_budget_rng_report(report, no_color=no_color)
     elif guard_name == "scatter-copyback-alias":
         _print_scatter_copyback_alias_report(report, no_color=no_color)
     elif guard_name == "softmax-dim":
