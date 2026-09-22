@@ -59,6 +59,10 @@ _GUARDS = {
         "description": "CPU float16 layer_norm returns nonzero output for exact-constant rows",
         "module": "torch_correctness_guards.guards.fp16_layernorm_tail",
     },
+    "full-dtype": {
+        "description": "Inductor torch.full symbolic fill skips dtype cast and narrow-integer overflow checks",
+        "module": "torch_correctness_guards.guards.full_dtype",
+    },
     "tiled-reduction-tail-store": {
         "description": "Inductor CPU 2D-tiled reduction tail store can overrun or corrupt outputs",
         "module": "torch_correctness_guards.guards.tiled_reduction_tail_store",
@@ -135,6 +139,10 @@ def _load_guard(name: str):
         from .guards import fp16_layernorm_tail
 
         return fp16_layernorm_tail
+    if name == "full-dtype":
+        from .guards import full_dtype
+
+        return full_dtype
     if name == "tiled-reduction-tail-store":
         from .guards import tiled_reduction_tail_store
 
@@ -456,6 +464,75 @@ def _print_fp16_layernorm_tail_report(report, *, no_color: bool) -> None:
                 )
             ]
         )
+
+
+def _print_full_dtype_report(report, *, no_color: bool) -> None:
+    style = resolve_style(no_color_flag=no_color)
+    print_fields([("torch version", report["torch_version"])])
+
+    if report["any_bool_fill_divergence"]:
+        print(status_headline(style, "warn", "torch.compile(inductor) bool-fill dtype-cast divergence reproduced on this host"))
+    else:
+        print(status_headline(style, "info", "no bool-fill divergence reproduced on this host's installed torch build"))
+
+    if report["any_int8_silent_overflow"]:
+        print(status_headline(style, "fail", "int8 overflow check silently skipped under torch.compile (eager raises, compiled does not)"))
+    else:
+        print(status_headline(style, "info", "no silent int8-overflow case reproduced on this host"))
+
+    if report.get("any_overflow_dtype_silent_overflow"):
+        print(status_headline(style, "fail", "at least one overflow case (int8, or int16/uint8 under this process's numpy state) silently skipped its check under torch.compile"))
+    else:
+        print(status_headline(style, "info", "no silent overflow case reproduced across the checked integer dtypes on this host/process"))
+
+    if report["guard_fully_correct"]:
+        print(status_headline(style, "ok", "safe_full() matches eager on every case, including under torch.compile"))
+    else:
+        print(status_headline(style, "fail", "safe_full() did NOT match eager on at least one case"))
+
+    section("bool-fill cases (fill value -> eager vs compiled(native) vs compiled(guarded))")
+    for c in report["bool_fill_cases"]:
+        flag = "DIVERGES" if c["native_diverges"] else "ok"
+        guard_flag = "guard-ok" if c["guard_matches_eager"] else "GUARD-FAILED"
+        print_fields(
+            [
+                (
+                    f"fill={c['fill_value']}",
+                    f"eager={c['eager_result']}  compiled_native={c['compiled_native_result']}  "
+                    f"compiled_guarded={c['compiled_guarded_result']}  {flag:9s}  {guard_flag}",
+                )
+            ]
+        )
+
+    section("int8-overflow cases (fill value -> did each path raise the overflow error?)")
+    for c in report["int8_overflow_cases"]:
+        flag = "SILENTLY-WRONG" if c["native_silently_wrong"] else "ok"
+        guard_flag = "guard-ok" if c["guard_matches_eager"] else "GUARD-FAILED"
+        print_fields(
+            [
+                (
+                    f"fill={c['fill_value']}",
+                    f"eager_raised={c['eager_raised']!s:5s}  compiled_native_raised={c['compiled_native_raised']!s:5s}  "
+                    f"compiled_guarded_raised={c['compiled_guarded_raised']!s:5s}  {flag:15s}  {guard_flag}",
+                )
+            ]
+        )
+
+    extra_cases = report.get("extra_overflow_dtype_cases") or []
+    if extra_cases:
+        section("additional narrow-integer-dtype overflow cases (int16/uint8; bug presence here is numpy-process-state dependent)")
+        for c in extra_cases:
+            flag = "SILENTLY-WRONG" if c["native_silently_wrong"] else "ok"
+            guard_flag = "guard-ok" if c["guard_matches_eager"] else "GUARD-FAILED"
+            print_fields(
+                [
+                    (
+                        f"dtype={c.get('overflow_dtype', '?')} fill={c['fill_value']}",
+                        f"eager_raised={c['eager_raised']!s:5s}  compiled_native_raised={c['compiled_native_raised']!s:5s}  "
+                        f"compiled_guarded_raised={c['compiled_guarded_raised']!s:5s}  {flag:15s}  {guard_flag}",
+                    )
+                ]
+            )
 
 
 def _print_compile_validation_report(report, *, no_color: bool) -> None:
@@ -789,6 +866,8 @@ def _print_report(guard_name: str, report, *, no_color: bool) -> None:
         _print_expand_fill_report(report, no_color=no_color)
     elif guard_name == "fp16-layernorm-tail":
         _print_fp16_layernorm_tail_report(report, no_color=no_color)
+    elif guard_name == "full-dtype":
+        _print_full_dtype_report(report, no_color=no_color)
     elif guard_name == "normal-dtype-promotion":
         _print_normal_dtype_promotion_report(report, no_color=no_color)
     elif guard_name == "shuffle-sample-frozen":
