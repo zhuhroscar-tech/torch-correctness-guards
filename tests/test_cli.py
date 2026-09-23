@@ -23,6 +23,7 @@ from torch_correctness_guards.guards import (
     linalg_pinv_complex_grad,
     memory_budget_rng,
     mps_copy_dtype,
+    mps_linalg_stride,
     normal_dtype_promotion,
     shuffle_sample_frozen,
     softmax_dim,
@@ -98,6 +99,8 @@ def test_list_includes_migrated_guard(capsys):
     assert "activation_memory_budget" in out
     assert "mps-copy-dtype" in out
     assert "MPS tensor copies" in out
+    assert "mps-linalg-stride" in out
+    assert "row-major layouts" in out
     assert "normal-dtype-promotion" in out
     assert "Normal.sample" in out
     assert "shuffle-sample-frozen" in out
@@ -278,6 +281,49 @@ def test_run_mps_copy_dtype_text_reports_guard_status(monkeypatch, capsys):
     assert "safe_to()/safe_copy_() match the CPU-oracle" in out
     assert "SILENT-WRONG" in out
     assert "skipped: MPS not available on this host" in out
+
+
+def _fake_mps_linalg_stride_report(**overrides):
+    report = {
+        "torch_version": "9.9.9-fake",
+        "issue_url": "https://github.com/pytorch/pytorch/issues/197236",
+        "mps_functional": True,
+        "cases": [
+            {
+                "op_name": "solve_triangular",
+                "ran": True,
+                "skip_reason": None,
+                "cpu_stride": [1, 5],
+                "native_mps_stride": [5, 1],
+                "guard_mps_stride": [1, 5],
+                "native_layout_matches_cpu": False,
+                "guard_layout_matches_cpu": True,
+                "native_values_match_cpu": True,
+                "guard_values_match_cpu": True,
+            }
+        ],
+        "any_native_layout_mismatch": True,
+        "guard_fully_correct": True,
+    }
+    report.update(overrides)
+    return report
+
+
+def test_run_mps_linalg_stride_json_includes_guard_name(monkeypatch, capsys):
+    monkeypatch.setattr(mps_linalg_stride, "diagnose", lambda: _fake_mps_linalg_stride_report())
+    assert main(["run", "mps-linalg-stride", "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["guard"] == "mps-linalg-stride"
+    assert payload["guard_fully_correct"] is True
+
+
+def test_run_mps_linalg_stride_text_reports_guard_status(monkeypatch, capsys):
+    monkeypatch.setattr(mps_linalg_stride, "diagnose", lambda: _fake_mps_linalg_stride_report())
+    assert main(["run", "mps-linalg-stride", "--no-color"]) == 0
+    out = capsys.readouterr().out
+    assert "MPS row-major vs CPU column-major layout mismatch reproduced" in out
+    assert "safe_solve_triangular()/safe_cholesky_solve()/safe_solve()" in out
+    assert "LAYOUT-MISMATCH" in out
 
 
 def test_torch_unavailable_sets_exit_2(monkeypatch, capsys):

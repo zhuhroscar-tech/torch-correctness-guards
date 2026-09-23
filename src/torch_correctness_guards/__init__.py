@@ -107,6 +107,12 @@ from .guards.mps_copy_dtype import (  # noqa: F401
     safe_copy_,
     safe_to,
 )
+from .guards.mps_linalg_stride import (  # noqa: F401
+    diagnose as diagnose_mps_linalg_stride,
+    safe_cholesky_solve,
+    safe_solve,
+    safe_solve_triangular,
+)
 from .guards.scatter_copyback_alias import (  # noqa: F401
     diagnose as diagnose_scatter_copyback_alias,
     safe_compiled_scatter_returning,

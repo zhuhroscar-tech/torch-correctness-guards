@@ -87,6 +87,10 @@ _GUARDS = {
         "description": "MPS tensor copies into CPU float64/complex128 destinations silently lose data",
         "module": "torch_correctness_guards.guards.mps_copy_dtype",
     },
+    "mps-linalg-stride": {
+        "description": "MPS linalg solves return row-major layouts where CPU/CUDA return column-major",
+        "module": "torch_correctness_guards.guards.mps_linalg_stride",
+    },
     "scatter-copyback-alias": {
         "description": "Inductor return-value aliasing drift for scatter copy-back and no-op elimination rewrites",
         "module": "torch_correctness_guards.guards.scatter_copyback_alias",
@@ -199,6 +203,10 @@ def _load_guard(name: str):
         from .guards import mps_copy_dtype
 
         return mps_copy_dtype
+    if name == "mps-linalg-stride":
+        from .guards import mps_linalg_stride
+
+        return mps_linalg_stride
     if name == "scatter-copyback-alias":
         from .guards import scatter_copyback_alias
 
@@ -1164,6 +1172,46 @@ def _print_mps_copy_dtype_report(report, *, no_color: bool) -> None:
         )
 
 
+def _print_mps_linalg_stride_report(report, *, no_color: bool) -> None:
+    style = resolve_style(no_color_flag=no_color)
+    print_fields(
+        [
+            ("torch version", report["torch_version"]),
+            ("mps functional on this host", "yes" if report["mps_functional"] else "no (see notes below)"),
+            ("tracking issue", report["issue_url"]),
+        ]
+    )
+
+    if report["any_native_layout_mismatch"]:
+        print(status_headline(style, "fail", "MPS row-major vs CPU column-major layout mismatch reproduced on this host"))
+    else:
+        print(status_headline(style, "info", "no layout mismatch reproduced on this host's exercised devices"))
+
+    if report["guard_fully_correct"]:
+        print(status_headline(style, "ok", "safe_solve_triangular()/safe_cholesky_solve()/safe_solve() match the CPU-layout and CPU-value contract"))
+    else:
+        print(status_headline(style, "fail", "guard did NOT match the expected contract on at least one device"))
+
+    section("per-op results (native vs guarded vs CPU-layout contract)")
+    for c in report["cases"]:
+        if not c["ran"]:
+            print_fields([(c["op_name"], f"skipped: {c['skip_reason']}")])
+            continue
+        native_flag = "LAYOUT-MISMATCH" if c["native_layout_matches_cpu"] is False else "ok"
+        guard_flag = "guard-ok" if c["guard_layout_matches_cpu"] and c["guard_values_match_cpu"] else "GUARD-FAILED"
+        print_fields(
+            [
+                (
+                    c["op_name"],
+                    f"cpu.stride={tuple(c['cpu_stride'])!s:12s}  "
+                    f"native.mps.stride={tuple(c['native_mps_stride'])!s:12s} ({native_flag})  "
+                    f"guard.mps.stride={tuple(c['guard_mps_stride'])!s:12s} ({guard_flag})",
+                )
+            ]
+        )
+
+
+
 def _print_report(guard_name: str, report, *, no_color: bool) -> None:
     if guard_name == "as-strided-restride-oob":
         _print_as_strided_report(report, no_color=no_color)
@@ -1203,6 +1251,8 @@ def _print_report(guard_name: str, report, *, no_color: bool) -> None:
         _print_memory_budget_rng_report(report, no_color=no_color)
     elif guard_name == "mps-copy-dtype":
         _print_mps_copy_dtype_report(report, no_color=no_color)
+    elif guard_name == "mps-linalg-stride":
+        _print_mps_linalg_stride_report(report, no_color=no_color)
     elif guard_name == "scatter-copyback-alias":
         _print_scatter_copyback_alias_report(report, no_color=no_color)
     elif guard_name == "softmax-dim":
