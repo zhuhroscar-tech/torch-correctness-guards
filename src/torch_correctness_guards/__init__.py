@@ -119,6 +119,10 @@ from .guards.multioutput_alias import (  # noqa: F401
     safe_aminmax,
     safe_slogdet,
 )
+from .guards.native_dropout_train_none import (  # noqa: F401
+    diagnose as diagnose_native_dropout_train_none,
+    safe_native_dropout,
+)
 from .guards.scatter_copyback_alias import (  # noqa: F401
     diagnose as diagnose_scatter_copyback_alias,
     safe_compiled_scatter_returning,

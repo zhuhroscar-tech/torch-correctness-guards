@@ -25,6 +25,7 @@ from torch_correctness_guards.guards import (
     mps_copy_dtype,
     mps_linalg_stride,
     multioutput_alias,
+    native_dropout_train_none,
     normal_dtype_promotion,
     shuffle_sample_frozen,
     softmax_dim,
@@ -104,6 +105,8 @@ def test_list_includes_migrated_guard(capsys):
     assert "row-major layouts" in out
     assert "multioutput-alias" in out
     assert "out= tuples" in out
+    assert "native-dropout-train-none" in out
+    assert "native_dropout train=None" in out
     assert "normal-dtype-promotion" in out
     assert "Normal.sample" in out
     assert "shuffle-sample-frozen" in out

@@ -30,6 +30,7 @@ The package replaces the older one-repo-per-guard pattern with one installable C
 | MPS copy dtype | `mps-copy-dtype` | pytorch/pytorch#197715 | Reproduces Apple Silicon MPS-to-CPU copies into `float64`/`complex128` silently losing data and verifies `safe_to` / `safe_copy_` perform the transfer before the CPU-side dtype conversion. |
 | MPS linalg stride | `mps-linalg-stride` | pytorch/pytorch#197236 | Reproduces Apple Silicon MPS linalg solves returning row-major output where CPU/CUDA return column-major, then verifies `safe_solve_triangular` / `safe_cholesky_solve` / `safe_solve` normalize eager output layout without changing values. |
 | multi-output aliasing | `multioutput-alias` | pytorch/pytorch#195338 | Reproduces multi-output `out=(t, t)` aliasing for `torch.aminmax` and `torch.linalg.slogdet`, then verifies `safe_aminmax` / `safe_slogdet` raise before a result slot is silently overwritten. |
+| native dropout train=None | `native-dropout-train-none` | pytorch/pytorch#197846 | Reproduces `torch.native_dropout(..., train=None)` disagreeing between CPU eager and `torch.compile`, documents the related MPS eager divergence, and verifies `safe_native_dropout` coerces the ambiguous `None` before compile. |
 | scatter copy-back aliasing | `scatter-copyback-alias` | pytorch/pytorch#195451, pytorch/pytorch#197893 | Reproduces Inductor changing a compiled function's return-value aliasing contract for scatter copy-back and no-op-elimination rewrites, then verifies `safe_compiled_scatter_returning` restores eager's non-aliasing behavior. |
 | softmax dim attention rewrite | `softmax-dim` | pytorch/pytorch#196468 | Reproduces Inductor rewriting attention-shaped `matmul -> softmax(dim=non-last) -> matmul` graphs as if `dim=-1`, then verifies `safe_softmax_attention` preserves eager semantics. |
 | 2D tiled reduction tail store | `tiled-reduction-tail-store` | pytorch/pytorch#196681 | Reproduces Inductor's CPU 2D-tiled reduction tail-store overrun/corruption in isolated subprocesses and verifies `safe_compiled_reduction` never silently trusts a corrupted result. |
@@ -77,6 +78,7 @@ torch-guard run memory-budget-rng
 torch-guard run mps-copy-dtype
 torch-guard run mps-linalg-stride
 torch-guard run multioutput-alias
+torch-guard run native-dropout-train-none
 torch-guard run scatter-copyback-alias
 torch-guard run softmax-dim
 torch-guard run tiled-reduction-tail-store
@@ -115,6 +117,7 @@ from torch_correctness_guards import safe_compile
 from torch_correctness_guards import safe_copy_, safe_to
 from torch_correctness_guards import safe_cholesky_solve, safe_solve, safe_solve_triangular
 from torch_correctness_guards import safe_aminmax, safe_slogdet
+from torch_correctness_guards import safe_native_dropout
 from torch_correctness_guards import safe_compiled_scatter_returning
 from torch_correctness_guards import safe_softmax_attention
 from torch_correctness_guards import safe_compiled_normal_sample
@@ -144,6 +147,7 @@ safe_copy_(cpu64_buffer, mps_tensor)
 sol = safe_solve(A_mps, B_mps)
 mn, mx = safe_aminmax(x)
 sign, logabsdet = safe_slogdet(matrix)
+native_dropout = safe_native_dropout(lambda x, p, train: torch.native_dropout(x, p, train))
 safe_fn = safe_compiled_scatter_returning(compiled_fn)
 attn = safe_softmax_attention(q, k, v, dim=0)
 safe_dup_index_assign(v, idx, 1.0)

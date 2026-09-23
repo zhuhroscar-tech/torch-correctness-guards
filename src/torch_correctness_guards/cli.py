@@ -95,6 +95,10 @@ _GUARDS = {
         "description": "Multi-output out= tuples silently accept aliased tensors and lose one result",
         "module": "torch_correctness_guards.guards.multioutput_alias",
     },
+    "native-dropout-train-none": {
+        "description": "torch.native_dropout train=None diverges between eager and torch.compile/MPS paths",
+        "module": "torch_correctness_guards.guards.native_dropout_train_none",
+    },
     "scatter-copyback-alias": {
         "description": "Inductor return-value aliasing drift for scatter copy-back and no-op elimination rewrites",
         "module": "torch_correctness_guards.guards.scatter_copyback_alias",
@@ -215,6 +219,10 @@ def _load_guard(name: str):
         from .guards import multioutput_alias
 
         return multioutput_alias
+    if name == "native-dropout-train-none":
+        from .guards import native_dropout_train_none
+
+        return native_dropout_train_none
     if name == "scatter-copyback-alias":
         from .guards import scatter_copyback_alias
 
@@ -1270,6 +1278,44 @@ def _print_multioutput_alias_report(report, *, no_color: bool) -> None:
         )
 
 
+def _print_native_dropout_train_none_report(report, *, no_color: bool) -> None:
+    style = resolve_style(no_color_flag=no_color)
+    print_fields([("torch version", report["torch_version"]), ("upstream issue", report["issue_url"])])
+
+    if report["any_none_divergence_reproduced"]:
+        print(status_headline(style, "fail", "native_dropout train=None eager-vs-compiled divergence reproduced on this host"))
+    else:
+        print(status_headline(style, "info", "no native_dropout train=None divergence reproduced on this host's installed torch build"))
+
+    if report["guard_fully_restores_none_cases"]:
+        print(status_headline(style, "ok", "safe_native_dropout() restores eager agreement for every train=None case"))
+    else:
+        print(status_headline(style, "fail", "safe_native_dropout() did NOT restore agreement for at least one train=None case"))
+
+    if report["explicit_cases_never_diverge_unguarded"] and report["explicit_cases_unaffected_by_guard"]:
+        print(status_headline(style, "ok", "explicit train=True/False cases are unaffected"))
+    else:
+        print(status_headline(style, "fail", "explicit train=True/False controls diverged or were changed by the guard"))
+
+    print(status_headline(style, "warn", "MPS-vs-CPU eager divergence is documented but not covered by GitHub Actions CI"))
+
+    section("cases (p, train -> eager/compiled/guarded mask_all_true?)")
+    for c in report["cases"]:
+        flag = "DIVERGED" if c["diverges_unguarded"] else "ok"
+        guard_flag = "guard-ok" if c["guard_restores_agreement"] else "GUARD-FAILED"
+        print_fields(
+            [
+                (
+                    f"p={c['p']:.1f} train={str(c['train_arg']):5s}",
+                    f"eager={str(c['eager_mask_all_true']):5s} "
+                    f"compiled={str(c['compiled_mask_all_true']):5s} "
+                    f"guarded={str(c['guarded_mask_all_true']):5s}  "
+                    f"{flag:9s} {guard_flag}",
+                )
+            ]
+        )
+
+
 def _print_report(guard_name: str, report, *, no_color: bool) -> None:
     if guard_name == "as-strided-restride-oob":
         _print_as_strided_report(report, no_color=no_color)
@@ -1313,6 +1359,8 @@ def _print_report(guard_name: str, report, *, no_color: bool) -> None:
         _print_mps_linalg_stride_report(report, no_color=no_color)
     elif guard_name == "multioutput-alias":
         _print_multioutput_alias_report(report, no_color=no_color)
+    elif guard_name == "native-dropout-train-none":
+        _print_native_dropout_train_none_report(report, no_color=no_color)
     elif guard_name == "scatter-copyback-alias":
         _print_scatter_copyback_alias_report(report, no_color=no_color)
     elif guard_name == "softmax-dim":
