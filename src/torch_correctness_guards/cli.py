@@ -111,6 +111,10 @@ _GUARDS = {
         "description": "get_optimizer_state_dict step-counter mutation during optimizer introspection",
         "module": "torch_correctness_guards.guards.optim_introspection",
     },
+    "take-along-dim-oob": {
+        "description": "torch.take_along_dim(dim=...) silently wraps out-of-bounds indices instead of raising",
+        "module": "torch_correctness_guards.guards.take_along_dim_oob",
+    },
     "scatter-copyback-alias": {
         "description": "Inductor return-value aliasing drift for scatter copy-back and no-op elimination rewrites",
         "module": "torch_correctness_guards.guards.scatter_copyback_alias",
@@ -247,6 +251,10 @@ def _load_guard(name: str):
         from .guards import optim_introspection
 
         return optim_introspection
+    if name == "take-along-dim-oob":
+        from .guards import take_along_dim_oob
+
+        return take_along_dim_oob
     if name == "scatter-copyback-alias":
         from .guards import scatter_copyback_alias
 
@@ -1445,6 +1453,34 @@ def _print_optim_introspection_report(report, *, no_color: bool) -> None:
         )
 
 
+def _print_take_along_dim_oob_report(report, *, no_color: bool) -> None:
+    style = resolve_style(no_color_flag=no_color)
+    print_fields([("torch version", report["torch_version"]), ("tracking issue", report["issue_url"])])
+
+    if report["any_native_silently_wrong"]:
+        print(status_headline(style, "fail", "torch.take_along_dim(dim=...) silent OOB-wrap reproduced on this host"))
+    else:
+        print(status_headline(style, "info", "no silent OOB-wrap reproduced on this host's installed torch build"))
+
+    if report["guard_fully_correct"]:
+        print(status_headline(style, "ok", "safe_take_along_dim() matches the raise-on-OOB / NumPy-oracle contract on every case"))
+    else:
+        print(status_headline(style, "fail", "safe_take_along_dim() did NOT match the expected contract on at least one case"))
+
+    section("cases (description -> native vs guard vs oracle)")
+    for c in report["cases"]:
+        native_flag = "SILENT-WRONG" if c["native_silently_wrong"] else ("raised" if c["native_raised"] else "ok")
+        guard_flag = "guard-ok" if c["guard_correct"] else "GUARD-FAILED"
+        print_fields(
+            [
+                (
+                    c["description"][:52],
+                    f"native={native_flag:12s}  guard_raised={str(c['guard_raised']):5s}  {guard_flag}",
+                )
+            ]
+        )
+
+
 
 def _print_report(guard_name: str, report, *, no_color: bool) -> None:
     if guard_name == "as-strided-restride-oob":
@@ -1497,6 +1533,8 @@ def _print_report(guard_name: str, report, *, no_color: bool) -> None:
         _print_numpy_stream_shuffle_report(report, no_color=no_color)
     elif guard_name == "optim-introspection":
         _print_optim_introspection_report(report, no_color=no_color)
+    elif guard_name == "take-along-dim-oob":
+        _print_take_along_dim_oob_report(report, no_color=no_color)
     elif guard_name == "scatter-copyback-alias":
         _print_scatter_copyback_alias_report(report, no_color=no_color)
     elif guard_name == "softmax-dim":

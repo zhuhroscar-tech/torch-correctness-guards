@@ -1,6 +1,6 @@
 """Consolidated PyTorch correctness diagnostics and guards."""
 
-__version__ = "0.1.3"
+__version__ = "0.1.4"
 
 from .guards.addcdiv_stale_scalar import (  # noqa: F401
     TorchUnavailableError,
@@ -143,6 +143,11 @@ from .guards.optim_introspection import (  # noqa: F401
     PROBE_OPTIMIZERS,
     diagnose as diagnose_optim_introspection,
     safe_get_optimizer_state_dict,
+)
+from .guards.take_along_dim_oob import (  # noqa: F401
+    diagnose as diagnose_take_along_dim_oob,
+    make_safe_take_along_dim,
+    safe_take_along_dim,
 )
 from .guards.scatter_copyback_alias import (  # noqa: F401
     diagnose as diagnose_scatter_copyback_alias,
