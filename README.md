@@ -32,6 +32,7 @@ The package replaces the older one-repo-per-guard pattern with one installable C
 | multi-output aliasing | `multioutput-alias` | pytorch/pytorch#195338 | Reproduces multi-output `out=(t, t)` aliasing for `torch.aminmax` and `torch.linalg.slogdet`, then verifies `safe_aminmax` / `safe_slogdet` raise before a result slot is silently overwritten. |
 | native dropout train=None | `native-dropout-train-none` | pytorch/pytorch#197846 | Reproduces `torch.native_dropout(..., train=None)` disagreeing between CPU eager and `torch.compile`, documents the related MPS eager divergence, and verifies `safe_native_dropout` coerces the ambiguous `None` before compile. |
 | nested AD / jagged narrow | `nested-ad-narrow` | pytorch/pytorch#196697, #196698, #196700, #196708, #145837, #197867 | Reproduces nested forward-mode AD wrong derivatives, jagged `torch.nested.narrow` selection/backward failures, and custom `autograd.Function` higher-order `jacfwd` zeroing; verifies reverse-mode and per-row-slicing guards. |
+| torch._numpy stream shuffle | `numpy-stream-shuffle` | pytorch/pytorch#197795 | Reproduces `torch._numpy.random.shuffle` under `use_numpy_random_stream=True` corrupting a tensor's row multiset, then verifies `safe_row_shuffle` / `safe_row_shuffle_` preserve true permutation semantics. |
 | scatter copy-back aliasing | `scatter-copyback-alias` | pytorch/pytorch#195451, pytorch/pytorch#197893 | Reproduces Inductor changing a compiled function's return-value aliasing contract for scatter copy-back and no-op-elimination rewrites, then verifies `safe_compiled_scatter_returning` restores eager's non-aliasing behavior. |
 | softmax dim attention rewrite | `softmax-dim` | pytorch/pytorch#196468 | Reproduces Inductor rewriting attention-shaped `matmul -> softmax(dim=non-last) -> matmul` graphs as if `dim=-1`, then verifies `safe_softmax_attention` preserves eager semantics. |
 | 2D tiled reduction tail store | `tiled-reduction-tail-store` | pytorch/pytorch#196681 | Reproduces Inductor's CPU 2D-tiled reduction tail-store overrun/corruption in isolated subprocesses and verifies `safe_compiled_reduction` never silently trusts a corrupted result. |
@@ -81,6 +82,7 @@ torch-guard run mps-linalg-stride
 torch-guard run multioutput-alias
 torch-guard run native-dropout-train-none
 torch-guard run nested-ad-narrow
+torch-guard run numpy-stream-shuffle
 torch-guard run scatter-copyback-alias
 torch-guard run softmax-dim
 torch-guard run tiled-reduction-tail-store
@@ -122,6 +124,7 @@ from torch_correctness_guards import safe_aminmax, safe_slogdet
 from torch_correctness_guards import safe_native_dropout
 from torch_correctness_guards import safe_jagged_narrow_unbind, safe_jagged_padded_transform
 from torch_correctness_guards import safe_nested_slogdet_second_order_jvp
+from torch_correctness_guards import safe_row_shuffle, safe_row_shuffle_
 from torch_correctness_guards import safe_compiled_scatter_returning
 from torch_correctness_guards import safe_softmax_attention
 from torch_correctness_guards import safe_compiled_normal_sample
@@ -154,6 +157,7 @@ sign, logabsdet = safe_slogdet(matrix)
 native_dropout = safe_native_dropout(lambda x, p, train: torch.native_dropout(x, p, train))
 second = safe_nested_slogdet_second_order_jvp(f, t0)
 parts = safe_jagged_narrow_unbind(dense_x, 1, starts, lengths)
+shuffled = safe_row_shuffle(x)
 safe_fn = safe_compiled_scatter_returning(compiled_fn)
 attn = safe_softmax_attention(q, k, v, dim=0)
 safe_dup_index_assign(v, idx, 1.0)

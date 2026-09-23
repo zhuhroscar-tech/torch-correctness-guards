@@ -1,6 +1,6 @@
 """Consolidated PyTorch correctness diagnostics and guards."""
 
-__version__ = "0.1.1"
+__version__ = "0.1.2"
 
 from .guards.addcdiv_stale_scalar import (  # noqa: F401
     TorchUnavailableError,
@@ -131,6 +131,11 @@ from .guards.nested_ad_narrow import (  # noqa: F401
     safe_layer_norm_second_order_jvp,
     safe_nested_householder_product_second_order_jvp,
     safe_nested_slogdet_second_order_jvp,
+)
+from .guards.numpy_stream_shuffle import (  # noqa: F401
+    diagnose as diagnose_numpy_stream_shuffle,
+    safe_row_shuffle,
+    safe_row_shuffle_,
 )
 from .guards.scatter_copyback_alias import (  # noqa: F401
     diagnose as diagnose_scatter_copyback_alias,

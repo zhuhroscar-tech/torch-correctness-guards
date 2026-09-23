@@ -103,6 +103,10 @@ _GUARDS = {
         "description": "Nested forward-mode AD and jagged NestedTensor narrow/padded-transform correctness guards",
         "module": "torch_correctness_guards.guards.nested_ad_narrow",
     },
+    "numpy-stream-shuffle": {
+        "description": "torch._numpy.random.shuffle stream-mode tensor row-multiset corruption",
+        "module": "torch_correctness_guards.guards.numpy_stream_shuffle",
+    },
     "scatter-copyback-alias": {
         "description": "Inductor return-value aliasing drift for scatter copy-back and no-op elimination rewrites",
         "module": "torch_correctness_guards.guards.scatter_copyback_alias",
@@ -231,6 +235,10 @@ def _load_guard(name: str):
         from .guards import nested_ad_narrow
 
         return nested_ad_narrow
+    if name == "numpy-stream-shuffle":
+        from .guards import numpy_stream_shuffle
+
+        return numpy_stream_shuffle
     if name == "scatter-copyback-alias":
         from .guards import scatter_copyback_alias
 
@@ -1372,6 +1380,34 @@ def _print_nested_ad_narrow_report(report, *, no_color: bool) -> None:
     print_fields([("custom Function jacfwd", f"expected={c['expected_derivatives']}  native={c['custom_function_jacfwd_chain']}  guard={c['guard_reverse_mode_chain']}")])
 
 
+def _print_numpy_stream_shuffle_report(report, *, no_color: bool) -> None:
+    style = resolve_style(no_color_flag=no_color)
+    print_fields([("torch version", report["torch_version"]), ("tracking issue", ", ".join(report["issue_urls"]))])
+
+    if report["any_bug_present"]:
+        print(status_headline(style, "warn", "torch._numpy.random.shuffle stream-mode row-multiset corruption reproduced on this host"))
+    else:
+        print(status_headline(style, "info", "bug NOT reproduced on this host's installed torch build"))
+
+    if report["guard_fully_effective"]:
+        print(status_headline(style, "ok", "safe_row_shuffle() preserves the row multiset at every tested seed/shape"))
+    else:
+        print(status_headline(style, "fail", "safe_row_shuffle() failed to preserve the row multiset in at least one case"))
+
+    section("per-case results (seed x shape)")
+    for c in report["cases"]:
+        bug_flag = "MULTISET-CORRUPTED" if not c["unsafe_preserved_multiset"] else "preserved"
+        guard_flag = "guard-ok" if c["guard_preserved_multiset"] else "GUARD-FAILED"
+        print_fields(
+            [
+                (
+                    f"seed={c['seed']} shape=({c['n_rows']},{c['n_cols']})",
+                    f"unsafe={bug_flag:20s}  {guard_flag}",
+                )
+            ]
+        )
+
+
 def _print_report(guard_name: str, report, *, no_color: bool) -> None:
     if guard_name == "as-strided-restride-oob":
         _print_as_strided_report(report, no_color=no_color)
@@ -1419,6 +1455,8 @@ def _print_report(guard_name: str, report, *, no_color: bool) -> None:
         _print_native_dropout_train_none_report(report, no_color=no_color)
     elif guard_name == "nested-ad-narrow":
         _print_nested_ad_narrow_report(report, no_color=no_color)
+    elif guard_name == "numpy-stream-shuffle":
+        _print_numpy_stream_shuffle_report(report, no_color=no_color)
     elif guard_name == "scatter-copyback-alias":
         _print_scatter_copyback_alias_report(report, no_color=no_color)
     elif guard_name == "softmax-dim":

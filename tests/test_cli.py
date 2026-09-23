@@ -27,6 +27,7 @@ from torch_correctness_guards.guards import (
     multioutput_alias,
     native_dropout_train_none,
     nested_ad_narrow,
+    numpy_stream_shuffle,
     normal_dtype_promotion,
     shuffle_sample_frozen,
     softmax_dim,
@@ -110,6 +111,8 @@ def test_list_includes_migrated_guard(capsys):
     assert "native_dropout train=None" in out
     assert "nested-ad-narrow" in out
     assert "NestedTensor narrow" in out
+    assert "numpy-stream-shuffle" in out
+    assert "row-multiset corruption" in out
     assert "normal-dtype-promotion" in out
     assert "Normal.sample" in out
     assert "shuffle-sample-frozen" in out
@@ -290,6 +293,43 @@ def test_run_mps_copy_dtype_text_reports_guard_status(monkeypatch, capsys):
     assert "safe_to()/safe_copy_() match the CPU-oracle" in out
     assert "SILENT-WRONG" in out
     assert "skipped: MPS not available on this host" in out
+
+
+def _fake_numpy_stream_shuffle_report(**overrides):
+    report = {
+        "torch_version": "9.9.9-fake",
+        "issue_urls": ["https://github.com/pytorch/pytorch/issues/197795"],
+        "cases": [
+            {
+                "seed": 0,
+                "n_rows": 6,
+                "n_cols": 2,
+                "unsafe_preserved_multiset": False,
+                "guard_preserved_multiset": True,
+            }
+        ],
+        "any_bug_present": True,
+        "guard_fully_effective": True,
+    }
+    report.update(overrides)
+    return report
+
+
+def test_run_numpy_stream_shuffle_json_includes_guard_name(monkeypatch, capsys):
+    monkeypatch.setattr(numpy_stream_shuffle, "diagnose", lambda: _fake_numpy_stream_shuffle_report())
+    assert main(["run", "numpy-stream-shuffle", "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["guard"] == "numpy-stream-shuffle"
+    assert payload["guard_fully_effective"] is True
+
+
+def test_run_numpy_stream_shuffle_text_reports_guard_status(monkeypatch, capsys):
+    monkeypatch.setattr(numpy_stream_shuffle, "diagnose", lambda: _fake_numpy_stream_shuffle_report())
+    assert main(["run", "numpy-stream-shuffle", "--no-color"]) == 0
+    out = capsys.readouterr().out
+    assert "torch._numpy.random.shuffle stream-mode row-multiset corruption reproduced" in out
+    assert "safe_row_shuffle() preserves the row multiset" in out
+    assert "MULTISET-CORRUPTED" in out
 
 
 def _fake_mps_linalg_stride_report(**overrides):
