@@ -21,7 +21,7 @@ dependencies = []
 
 [project.optional-dependencies]
 dev = ["pytest", "pytest-cov"]
-torch = ["torch>=2.0"]
+torch = ["torch>=2.0", "numpy"]
 
 [project.scripts]
 torch-guard = "torch_correctness_guards.cli:main"
