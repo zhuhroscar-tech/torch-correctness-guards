@@ -107,6 +107,10 @@ _GUARDS = {
         "description": "torch._numpy.random.shuffle stream-mode tensor row-multiset corruption",
         "module": "torch_correctness_guards.guards.numpy_stream_shuffle",
     },
+    "optim-introspection": {
+        "description": "get_optimizer_state_dict step-counter mutation during optimizer introspection",
+        "module": "torch_correctness_guards.guards.optim_introspection",
+    },
     "scatter-copyback-alias": {
         "description": "Inductor return-value aliasing drift for scatter copy-back and no-op elimination rewrites",
         "module": "torch_correctness_guards.guards.scatter_copyback_alias",
@@ -239,6 +243,10 @@ def _load_guard(name: str):
         from .guards import numpy_stream_shuffle
 
         return numpy_stream_shuffle
+    if name == "optim-introspection":
+        from .guards import optim_introspection
+
+        return optim_introspection
     if name == "scatter-copyback-alias":
         from .guards import scatter_copyback_alias
 
@@ -1408,6 +1416,36 @@ def _print_numpy_stream_shuffle_report(report, *, no_color: bool) -> None:
         )
 
 
+def _print_optim_introspection_report(report, *, no_color: bool) -> None:
+    style = resolve_style(no_color_flag=no_color)
+    print_fields([("torch version", report["torch_version"]), ("tracking issue", report["issue_url"])])
+
+    if report["any_bug_present"]:
+        print(status_headline(style, "warn", "get_optimizer_state_dict step-counter mutation reproduced on this host"))
+    else:
+        print(status_headline(style, "info", "bug NOT reproduced on this host's installed torch build"))
+
+    if report["guard_fully_effective"]:
+        print(status_headline(style, "ok", "safe_get_optimizer_state_dict() keeps introspection read-only for every tested optimizer"))
+    else:
+        print(status_headline(style, "fail", "guard did NOT neutralize the bug for at least one optimizer"))
+
+    section("per-optimizer results")
+    for r in report["results"]:
+        flag = "bug" if r["bug_present"] else "clean"
+        guard_flag = "guard-ok" if r["guard_effective"] else "GUARD-FAILED"
+        print_fields(
+            [
+                (
+                    r["name"],
+                    f"{flag:5s}  max|diff| raw={r['max_abs_diff_raw']:.3e}  "
+                    f"guarded={r['max_abs_diff_guarded']:.3e}  {guard_flag}",
+                )
+            ]
+        )
+
+
+
 def _print_report(guard_name: str, report, *, no_color: bool) -> None:
     if guard_name == "as-strided-restride-oob":
         _print_as_strided_report(report, no_color=no_color)
@@ -1457,6 +1495,8 @@ def _print_report(guard_name: str, report, *, no_color: bool) -> None:
         _print_nested_ad_narrow_report(report, no_color=no_color)
     elif guard_name == "numpy-stream-shuffle":
         _print_numpy_stream_shuffle_report(report, no_color=no_color)
+    elif guard_name == "optim-introspection":
+        _print_optim_introspection_report(report, no_color=no_color)
     elif guard_name == "scatter-copyback-alias":
         _print_scatter_copyback_alias_report(report, no_color=no_color)
     elif guard_name == "softmax-dim":

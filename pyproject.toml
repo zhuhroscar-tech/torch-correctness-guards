@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "torch-correctness-guards"
-version = "0.1.2"
+version = "0.1.3"
 description = "A consolidated suite of small PyTorch correctness diagnostics and call-site guards"
 readme = "README.md"
 license = { text = "MIT" }
