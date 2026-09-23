@@ -9,6 +9,20 @@ from torch_correctness_guards.guards.native_dropout_train_none import (  # noqa:
     safe_native_dropout,
 )
 
+_CACHED_REPORT = None
+
+
+def _diagnose_once():
+    """The native_dropout repro intentionally spawns isolated torch.compile
+    workers. Cache it inside this test module so CI verifies the real
+    repro once instead of paying the same 15-worker compile cost in every
+    assertion-focused test.
+    """
+    global _CACHED_REPORT
+    if _CACHED_REPORT is None:
+        _CACHED_REPORT = diagnose()
+    return _CACHED_REPORT
+
 
 def test_diagnose_reproduces_train_none_divergence():
     """This is the core regression test: it MUST reproduce the real
@@ -18,7 +32,7 @@ def test_diagnose_reproduces_train_none_divergence():
     upstream (PR #197854 or similar), this assertion will start
     failing loudly -- that is a SIGNAL to re-check the upstream issue
     state and update this test, not a harness bug to silence."""
-    report = diagnose()
+    report = _diagnose_once()
     assert report["any_none_divergence_reproduced"] is True, (
         "expected to reproduce pytorch/pytorch#197846's train=None "
         "eager-vs-compiled divergence on the installed torch version "
@@ -29,7 +43,7 @@ def test_diagnose_reproduces_train_none_divergence():
 
 
 def test_guard_restores_agreement_for_all_none_cases():
-    report = diagnose()
+    report = _diagnose_once()
     assert report["guard_fully_restores_none_cases"] is True
     none_cases = [c for c in report["cases"] if c["train_arg"] is None]
     assert len(none_cases) == 5  # one per p value
@@ -40,7 +54,7 @@ def test_guard_restores_agreement_for_all_none_cases():
 def test_explicit_train_args_never_diverge_unguarded():
     """Control: explicit train=True/False must already agree between
     eager and compiled -- isolating the defect to train=None only."""
-    report = diagnose()
+    report = _diagnose_once()
     assert report["explicit_cases_never_diverge_unguarded"] is True
     explicit_cases = [c for c in report["cases"] if c["train_arg"] is not None]
     assert len(explicit_cases) == 10  # 5 p values x {True, False}
@@ -49,7 +63,7 @@ def test_explicit_train_args_never_diverge_unguarded():
 
 
 def test_guard_is_a_noop_for_explicit_train_args():
-    report = diagnose()
+    report = _diagnose_once()
     assert report["explicit_cases_unaffected_by_guard"] is True
 
 
@@ -83,7 +97,7 @@ def test_p_zero_boundary_case_never_diverges():
     """p=0.0 is a degenerate boundary: no dropout is possible regardless
     of train, so mask should be all-true everywhere and the guard
     should never need to change anything."""
-    report = diagnose()
+    report = _diagnose_once()
     zero_p_cases = [c for c in report["cases"] if c["p"] == 0.0]
     assert len(zero_p_cases) == 3  # None, True, False
     for c in zero_p_cases:
