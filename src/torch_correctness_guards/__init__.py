@@ -1,6 +1,6 @@
 """Consolidated PyTorch correctness diagnostics and guards."""
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 from .guards.addcdiv_stale_scalar import (  # noqa: F401
     TorchUnavailableError,
@@ -122,6 +122,15 @@ from .guards.multioutput_alias import (  # noqa: F401
 from .guards.native_dropout_train_none import (  # noqa: F401
     diagnose as diagnose_native_dropout_train_none,
     safe_native_dropout,
+)
+from .guards.nested_ad_narrow import (  # noqa: F401
+    diagnose as diagnose_nested_ad_narrow,
+    safe_autograd_function_higher_order_derivative,
+    safe_jagged_narrow_unbind,
+    safe_jagged_padded_transform,
+    safe_layer_norm_second_order_jvp,
+    safe_nested_householder_product_second_order_jvp,
+    safe_nested_slogdet_second_order_jvp,
 )
 from .guards.scatter_copyback_alias import (  # noqa: F401
     diagnose as diagnose_scatter_copyback_alias,

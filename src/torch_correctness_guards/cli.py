@@ -99,6 +99,10 @@ _GUARDS = {
         "description": "torch.native_dropout train=None diverges between eager and torch.compile/MPS paths",
         "module": "torch_correctness_guards.guards.native_dropout_train_none",
     },
+    "nested-ad-narrow": {
+        "description": "Nested forward-mode AD and jagged NestedTensor narrow/padded-transform correctness guards",
+        "module": "torch_correctness_guards.guards.nested_ad_narrow",
+    },
     "scatter-copyback-alias": {
         "description": "Inductor return-value aliasing drift for scatter copy-back and no-op elimination rewrites",
         "module": "torch_correctness_guards.guards.scatter_copyback_alias",
@@ -223,6 +227,10 @@ def _load_guard(name: str):
         from .guards import native_dropout_train_none
 
         return native_dropout_train_none
+    if name == "nested-ad-narrow":
+        from .guards import nested_ad_narrow
+
+        return nested_ad_narrow
     if name == "scatter-copyback-alias":
         from .guards import scatter_copyback_alias
 
@@ -1316,6 +1324,54 @@ def _print_native_dropout_train_none_report(report, *, no_color: bool) -> None:
         )
 
 
+def _print_nested_ad_narrow_report(report, *, no_color: bool) -> None:
+    style = resolve_style(no_color_flag=no_color)
+    print_fields([("torch version", report["torch_version"]), ("upstream issues", ", ".join(report["issue_urls"]))])
+
+    bug_flags = [
+        ("slogdet nested-JVP", report["slogdet_bug_reproduced"]),
+        ("householder_product nested-JVP", report["householder_bug_reproduced"]),
+        ("layer_norm nested-JVP", report["layer_norm_bug_reproduced"]),
+        ("jagged narrow+unbind", report["narrow_bug_reproduced"]),
+        ("padded<->jagged backward", report["padded_transform_bug_reproduced"]),
+        ("custom autograd.Function jacfwd chain", report["autograd_function_higher_order_bug_reproduced"]),
+    ]
+    reproduced = [name for name, ok in bug_flags if ok]
+    if reproduced:
+        print(status_headline(style, "fail", "nested AD / jagged NestedTensor bugs reproduced: " + ", ".join(reproduced)))
+    else:
+        print(status_headline(style, "info", "no nested AD / jagged NestedTensor bugs reproduced on this host's installed torch build"))
+
+    if report["guards_fully_correct"]:
+        print(status_headline(style, "ok", "all nested AD and jagged NestedTensor guards match their independent expected values"))
+    else:
+        print(status_headline(style, "fail", "at least one nested AD / jagged NestedTensor guard failed"))
+
+    section("second-order AD cases")
+    for title, key in [
+        ("slogdet", "slogdet_second_order_case"),
+        ("householder_product", "householder_product_second_order_case"),
+        ("layer_norm", "layer_norm_second_order_case"),
+    ]:
+        c = report[key]
+        print_fields(
+            [
+                (
+                    title,
+                    f"expected={c['expected_second_order']}  nested_jvp={c['forward_over_forward_jvp']}  guard={c['guard_reverse_over_reverse']}",
+                )
+            ]
+        )
+
+    section("jagged / custom autograd cases")
+    c = report["jagged_narrow_unbind_case"]
+    print_fields([("narrow+unbind sum", f"expected={c['expected_sum']}  native={c['buggy_narrow_unbind_sum']}  guard={c['guard_sum']}")])
+    c = report["jagged_padded_transform_case"]
+    print_fields([("padded transform", f"native_backward_raised={c['backward_raised_on_buggy_path']}  guard_backward={c['guard_backward_succeeded']}  guard_forward_ref={c['guard_forward_matches_reference']}")])
+    c = report["autograd_function_higher_order_case"]
+    print_fields([("custom Function jacfwd", f"expected={c['expected_derivatives']}  native={c['custom_function_jacfwd_chain']}  guard={c['guard_reverse_mode_chain']}")])
+
+
 def _print_report(guard_name: str, report, *, no_color: bool) -> None:
     if guard_name == "as-strided-restride-oob":
         _print_as_strided_report(report, no_color=no_color)
@@ -1361,6 +1417,8 @@ def _print_report(guard_name: str, report, *, no_color: bool) -> None:
         _print_multioutput_alias_report(report, no_color=no_color)
     elif guard_name == "native-dropout-train-none":
         _print_native_dropout_train_none_report(report, no_color=no_color)
+    elif guard_name == "nested-ad-narrow":
+        _print_nested_ad_narrow_report(report, no_color=no_color)
     elif guard_name == "scatter-copyback-alias":
         _print_scatter_copyback_alias_report(report, no_color=no_color)
     elif guard_name == "softmax-dim":
