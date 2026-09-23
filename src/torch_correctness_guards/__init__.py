@@ -113,6 +113,12 @@ from .guards.mps_linalg_stride import (  # noqa: F401
     safe_solve,
     safe_solve_triangular,
 )
+from .guards.multioutput_alias import (  # noqa: F401
+    AliasedMultiOutputError,
+    diagnose as diagnose_multioutput_alias,
+    safe_aminmax,
+    safe_slogdet,
+)
 from .guards.scatter_copyback_alias import (  # noqa: F401
     diagnose as diagnose_scatter_copyback_alias,
     safe_compiled_scatter_returning,

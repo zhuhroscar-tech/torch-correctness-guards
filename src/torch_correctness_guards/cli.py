@@ -91,6 +91,10 @@ _GUARDS = {
         "description": "MPS linalg solves return row-major layouts where CPU/CUDA return column-major",
         "module": "torch_correctness_guards.guards.mps_linalg_stride",
     },
+    "multioutput-alias": {
+        "description": "Multi-output out= tuples silently accept aliased tensors and lose one result",
+        "module": "torch_correctness_guards.guards.multioutput_alias",
+    },
     "scatter-copyback-alias": {
         "description": "Inductor return-value aliasing drift for scatter copy-back and no-op elimination rewrites",
         "module": "torch_correctness_guards.guards.scatter_copyback_alias",
@@ -207,6 +211,10 @@ def _load_guard(name: str):
         from .guards import mps_linalg_stride
 
         return mps_linalg_stride
+    if name == "multioutput-alias":
+        from .guards import multioutput_alias
+
+        return multioutput_alias
     if name == "scatter-copyback-alias":
         from .guards import scatter_copyback_alias
 
@@ -1212,6 +1220,56 @@ def _print_mps_linalg_stride_report(report, *, no_color: bool) -> None:
 
 
 
+def _print_multioutput_alias_report(report, *, no_color: bool) -> None:
+    style = resolve_style(no_color_flag=no_color)
+    print_fields([("torch version", report["torch_version"]), ("tracking issue", ", ".join(report["issue_urls"]))])
+
+    if report["any_aminmax_alias_bug"]:
+        print(status_headline(style, "fail", "torch.aminmax(out=(t, t)) same-tensor aliasing bug reproduced on this host"))
+    else:
+        print(status_headline(style, "info", "no torch.aminmax aliasing divergence reproduced on this host's installed torch build"))
+
+    if report["any_slogdet_alias_bug"]:
+        print(status_headline(style, "fail", "torch.linalg.slogdet(out=(t, t)) same-tensor aliasing bug reproduced on this host"))
+    else:
+        print(status_headline(style, "info", "no torch.linalg.slogdet aliasing divergence reproduced on this host's installed torch build"))
+
+    if report["guard_fully_correct"]:
+        print(status_headline(style, "ok", "safe_aminmax()/safe_slogdet() raise before computing on every aliased case"))
+    else:
+        print(status_headline(style, "fail", "guard did NOT raise on at least one aliased case"))
+
+    section("aminmax cases (values -> native aliased result vs reference min/max, guard behavior)")
+    for c in report["aminmax_cases"]:
+        native_flag = "WRONG" if c["native_result_is_wrong"] else ("raised" if c["native_aliased_raised"] else "ok")
+        guard_flag = "guard-raised" if c["guard_raised"] else "GUARD-DID-NOT-RAISE"
+        print_fields(
+            [
+                (
+                    f"values={c['values']}",
+                    f"native_aliased={c['native_aliased_result']!r}  "
+                    f"ref_min={c['reference_min']}  ref_max={c['reference_max']}  "
+                    f"{native_flag:6s}  {guard_flag}",
+                )
+            ]
+        )
+
+    section("slogdet cases (matrix -> native aliased result vs reference sign/logabsdet, guard behavior)")
+    for c in report["slogdet_cases"]:
+        native_flag = "LOST-SIGN" if c["native_result_lost_sign"] else ("raised" if c["native_aliased_raised"] else "ok")
+        guard_flag = "guard-raised" if c["guard_raised"] else "GUARD-DID-NOT-RAISE"
+        print_fields(
+            [
+                (
+                    f"matrix={c['matrix']}",
+                    f"native_aliased={c['native_aliased_result']!r}  "
+                    f"ref_sign={c['reference_sign']}  ref_logabsdet={c['reference_logabsdet']:.4f}  "
+                    f"{native_flag:10s}  {guard_flag}",
+                )
+            ]
+        )
+
+
 def _print_report(guard_name: str, report, *, no_color: bool) -> None:
     if guard_name == "as-strided-restride-oob":
         _print_as_strided_report(report, no_color=no_color)
@@ -1253,6 +1311,8 @@ def _print_report(guard_name: str, report, *, no_color: bool) -> None:
         _print_mps_copy_dtype_report(report, no_color=no_color)
     elif guard_name == "mps-linalg-stride":
         _print_mps_linalg_stride_report(report, no_color=no_color)
+    elif guard_name == "multioutput-alias":
+        _print_multioutput_alias_report(report, no_color=no_color)
     elif guard_name == "scatter-copyback-alias":
         _print_scatter_copyback_alias_report(report, no_color=no_color)
     elif guard_name == "softmax-dim":

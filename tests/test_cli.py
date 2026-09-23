@@ -24,6 +24,7 @@ from torch_correctness_guards.guards import (
     memory_budget_rng,
     mps_copy_dtype,
     mps_linalg_stride,
+    multioutput_alias,
     normal_dtype_promotion,
     shuffle_sample_frozen,
     softmax_dim,
@@ -101,6 +102,8 @@ def test_list_includes_migrated_guard(capsys):
     assert "MPS tensor copies" in out
     assert "mps-linalg-stride" in out
     assert "row-major layouts" in out
+    assert "multioutput-alias" in out
+    assert "out= tuples" in out
     assert "normal-dtype-promotion" in out
     assert "Normal.sample" in out
     assert "shuffle-sample-frozen" in out
@@ -324,6 +327,59 @@ def test_run_mps_linalg_stride_text_reports_guard_status(monkeypatch, capsys):
     assert "MPS row-major vs CPU column-major layout mismatch reproduced" in out
     assert "safe_solve_triangular()/safe_cholesky_solve()/safe_solve()" in out
     assert "LAYOUT-MISMATCH" in out
+
+
+def _fake_multioutput_alias_report(**overrides):
+    report = {
+        "torch_version": "9.9.9-fake",
+        "issue_urls": ["https://github.com/pytorch/pytorch/issues/195338"],
+        "aminmax_cases": [
+            {
+                "values": [3.0, 1.0],
+                "native_aliased_result": 3.0,
+                "native_aliased_raised": False,
+                "reference_min": 1.0,
+                "reference_max": 3.0,
+                "native_result_is_wrong": True,
+                "guard_raised": True,
+            }
+        ],
+        "slogdet_cases": [
+            {
+                "matrix": [[2.0, 0.0], [0.0, 2.0]],
+                "native_aliased_result": 1.3862943611198906,
+                "native_aliased_raised": False,
+                "reference_sign": 1.0,
+                "reference_logabsdet": 1.3862943611198906,
+                "native_result_lost_sign": True,
+                "guard_raised": True,
+            }
+        ],
+        "any_aminmax_alias_bug": True,
+        "any_slogdet_alias_bug": True,
+        "guard_fully_correct": True,
+    }
+    report.update(overrides)
+    return report
+
+
+def test_run_multioutput_alias_json_includes_guard_name(monkeypatch, capsys):
+    monkeypatch.setattr(multioutput_alias, "diagnose", lambda: _fake_multioutput_alias_report())
+    assert main(["run", "multioutput-alias", "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["guard"] == "multioutput-alias"
+    assert payload["guard_fully_correct"] is True
+
+
+def test_run_multioutput_alias_text_reports_guard_status(monkeypatch, capsys):
+    monkeypatch.setattr(multioutput_alias, "diagnose", lambda: _fake_multioutput_alias_report())
+    assert main(["run", "multioutput-alias", "--no-color"]) == 0
+    out = capsys.readouterr().out
+    assert "torch.aminmax(out=(t, t)) same-tensor aliasing bug reproduced" in out
+    assert "torch.linalg.slogdet(out=(t, t)) same-tensor aliasing bug reproduced" in out
+    assert "safe_aminmax()/safe_slogdet() raise before computing" in out
+    assert "LOST-SIGN" in out
+
 
 
 def test_torch_unavailable_sets_exit_2(monkeypatch, capsys):
